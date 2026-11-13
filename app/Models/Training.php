@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Services\Training\FirstName;
 
 class Training extends Model
 {
@@ -23,17 +24,39 @@ class Training extends Model
         'generation_error',
         'llm_model',
         'llm_usage',
+        'interactive_data',
     ];
 
     protected $casts = [
         'generated' => 'boolean',
         'generation_failed_at' => 'datetime',
         'llm_usage' => 'array',
+        'interactive_data' => 'array',
     ];
 
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** Thesis condition "interactive": structured data in interactive_data, {{first_name}} placeholder. */
+    public function isInteractive(): bool
+    {
+        return $this->user?->training_personalization === 'interactive';
+    }
+
+    /**
+     * HTML of a section as printed by training_show. For the paper's conditions this is exactly
+     * html_entity_decode() of the stored HTML, as before; for interactive trainings the
+     * {{first_name}} placeholder is then replaced with the escaped name of the participant.
+     */
+    public function renderSection(string $section): string
+    {
+        $html = html_entity_decode($this->$section ?? '');
+        if ($this->isInteractive()) {
+            $html = FirstName::fillHtml($html, (string) $this->user->name);
+        }
+        return $html;
     }
 
     /*

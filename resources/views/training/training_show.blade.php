@@ -21,7 +21,7 @@
                 <div x-show="step === 1" id="section-intro">
                     <div class="text-2xl font-bold text-center mb-6"> -- Introduction -- </div>
                     <div class="text-xl text-justify">
-                        {!! html_entity_decode($training->introduction) !!}
+                        {!! $training->renderSection('introduction') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 1 of 5</h2>
                 </div>
@@ -29,7 +29,7 @@
                 <div x-show="step === 2" id="section-scenario">
                     <div class="text-xl text-justify">
                     <div class="text-2xl font-bold text-center mb-6"> -- Phishing Scenario -- </div>
-                        {!! html_entity_decode($training->scenario) !!}
+                        {!! $training->renderSection('scenario') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 2 of 5</h2>
                 </div>
@@ -38,7 +38,7 @@
 
                     <div class="text-2xl font-bold text-center mb-6"> -- Defense Strategies -- </div>
                     <div class="text-xl text-justify">
-                        {!! html_entity_decode($training->defense_strategies) !!}
+                        {!! $training->renderSection('defense_strategies') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 3 of 5</h2>
                 </div>
@@ -46,7 +46,11 @@
                 <div x-show="step === 4" id="section-exercises">
                     <div class="text-2xl font-bold text-center mb-6"> -- Exercises -- </div>
                     <div class="text-xl text-justify">
-                        {!! html_entity_decode($training->exercises) !!}
+                        {!! $training->renderSection('exercises') !!}
+                        @if ($training->isInteractive())
+                            {{-- Module 4 of the interactive condition: emails from the bank + tutor (partial owned by the tutor lot). --}}
+                            @includeIf('training.partials.m4-interactive', ['training' => $training, 'user' => $training->user])
+                        @endif
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 4 of 5</h2>
                 </div>
@@ -54,7 +58,7 @@
                 <div x-show="step === 5" id="section-conclusions">
                     <div class="text-2xl font-bold text-center mb-6"> -- Conclusion -- </div>
                     <div class="text-xl text-justify">
-                        {!! html_entity_decode($training->conclusions) !!}
+                        {!! $training->renderSection('conclusions') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 5 of 5</h2>
                 </div>

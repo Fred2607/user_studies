@@ -56,7 +56,8 @@ class TrainingController extends Controller
     {
         $user = Auth::user();
         if ($user->training == null) {
-            if ($user->training_personalization !== "no") {  // If training is personalized, generate it from scratch
+            // Personalized conditions, including the thesis condition "interactive", are generated from scratch
+            if ($user->training_personalization !== "no") {
                 $training = Training::create([
                     'user_id' => $user->id,
                     'generated' => false
