@@ -17,7 +17,8 @@ return new class extends Migration
         Schema::create('tutor_sessions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('training_id')->nullable()->constrained('trainings')->nullOnDelete();
+            // Always set: TutorConversation refuses (409) users without a training.
+            $table->foreignId('training_id')->constrained('trainings')->cascadeOnDelete();
             // Email sequence: trainings.interactive_data.m4.sequence when present (seed null), otherwise drawn here
             // with DialogSession::drawSequence (reproducible from the seed).
             $table->unsignedInteger('seed')->nullable();

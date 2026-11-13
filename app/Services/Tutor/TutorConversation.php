@@ -45,13 +45,17 @@ class TutorConversation
         return $this->user->training?->id;
     }
 
-    /** Current session of the user, created (with a fresh sequence draw) on first access. */
+    /**
+     * Current session of the user, created (with a fresh sequence draw) on first access.
+     * A user without a training has no Module 4 to run: 409, no session is created (training_id is NOT NULL).
+     */
     public function session(bool $fresh = false): TutorSession
     {
         if ($this->session !== null && ! $fresh) {
             return $this->session;
         }
         $trainingId = $this->trainingId();
+        abort_if($trainingId === null, 409, 'No training to attach the tutor to.');
         $session = TutorSession::query()
             ->where('user_id', $this->user->id)
             ->where('training_id', $trainingId)

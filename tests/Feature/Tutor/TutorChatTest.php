@@ -29,6 +29,15 @@ class TutorChatTest extends TestCase
         $this->bank = (new Materials())->loadEmailBank();
     }
 
+    /** Participant with a (non-interactive, already generated) training: the tutor needs one to attach the session to. */
+    private function participant(array $attributes = []): User
+    {
+        $user = User::factory()->create($attributes);
+        Training::create(['user_id' => $user->id, 'generated' => true]);
+
+        return $user->fresh();
+    }
+
     private function card(string $id = self::FIRST): array
     {
         return Materials::findCard($this->bank, $id);
@@ -80,7 +89,7 @@ class TutorChatTest extends TestCase
 
     public function test_happy_path_closes_one_email_logs_turns_and_responses(): void
     {
-        $this->actingAs($user = User::factory()->create());
+        $this->actingAs($user = $this->participant());
         $fake = $this->fake($this->closingScript());
 
         $c = Livewire::test(TutorChat::class)->assertSee('Exercise 1 of 4');
@@ -124,8 +133,8 @@ class TutorChatTest extends TestCase
 
     public function test_completing_the_last_email_emits_the_completion_event(): void
     {
-        $this->actingAs($user = User::factory()->create());
-        TutorSession::create(['user_id' => $user->id, 'seed' => 1, 'sequence' => [self::FIRST], 'legitimate_position' => 1]);
+        $this->actingAs($user = $this->participant());
+        TutorSession::create(['user_id' => $user->id, 'training_id' => $user->training->id, 'seed' => 1, 'sequence' => [self::FIRST], 'legitimate_position' => 1]);
         $this->fake($this->closingScript());
 
         $c = Livewire::test(TutorChat::class)->assertSee('Exercise 1 of 1');
@@ -144,7 +153,7 @@ class TutorChatTest extends TestCase
 
     public function test_invalid_model_output_falls_back_and_is_logged(): void
     {
-        $this->actingAs($user = User::factory()->create());
+        $this->actingAs($user = $this->participant());
         $fake = $this->fake(['this is not json', '{"message": 1}']);
         $hint = $this->card()['fallback_hints']['high'][0];
 
@@ -162,7 +171,7 @@ class TutorChatTest extends TestCase
 
     public function test_dialog_resumes_after_reload(): void
     {
-        $this->actingAs($user = User::factory()->create());
+        $this->actingAs($user = $this->participant());
         $this->fake([$this->output('Good start. What does the email ask you to hand over?', ['c1'])]);
         $this->send(Livewire::test(TutorChat::class), 'phishing', 'The sender address is not from Apple at all');
 
@@ -184,7 +193,7 @@ class TutorChatTest extends TestCase
     public function test_rate_limit_blocks_the_llm_call(): void
     {
         config(['tutor.rate_limit_per_minute' => 1]);
-        $this->actingAs($user = User::factory()->create());
+        $this->actingAs($user = $this->participant());
         $fake = $this->fake([
             $this->output('What does the email ask you to hand over?', ['c1']),
             $this->output('Never reached', ['c1']),
@@ -202,7 +211,7 @@ class TutorChatTest extends TestCase
     public function test_rejected_input_makes_no_llm_call(): void
     {
         config(['tutor.max_message_chars' => 50]);
-        $this->actingAs(User::factory()->create());
+        $this->actingAs($this->participant());
         $fake = $this->fake([]);
 
         $c = Livewire::test(TutorChat::class);
@@ -216,7 +225,7 @@ class TutorChatTest extends TestCase
 
     public function test_server_only_fields_never_reach_the_browser_before_closing(): void
     {
-        $this->actingAs(User::factory()->create(['name' => 'Ada Lovelace']));
+        $this->actingAs($this->participant(['name' => 'Ada Lovelace']));
         $this->fake([$this->output('What does the email ask you to hand over?', ['c1'])]);
         $card = $this->card();
 
@@ -259,10 +268,22 @@ class TutorChatTest extends TestCase
         $this->assertSame(0, TutorSession::count());
     }
 
+    public function test_users_without_a_training_get_no_tutor_session(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->fake([]);
+        Livewire::test(TutorChat::class)->assertStatus(409);
+        $this->assertSame(0, TutorSession::count());
+
+        // The column itself refuses a session without a training.
+        $this->expectException(\Illuminate\Database\QueryException::class);
+        TutorSession::create(['user_id' => auth()->id(), 'seed' => 1, 'sequence' => [self::FIRST], 'legitimate_position' => 1]);
+    }
+
     public function test_users_only_see_and_write_their_own_session(): void
     {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
+        $alice = $this->participant();
+        $bob = $this->participant();
         $this->fake([
             $this->output('Alice, what does the email ask you to hand over?', ['c1']),
             $this->output('Bob, which other element would you compare?', ['c1']),
@@ -288,7 +309,7 @@ class TutorChatTest extends TestCase
     }
     public function test_token_usage_and_model_are_logged_per_turn(): void
     {
-        $this->actingAs($user = User::factory()->create());
+        $this->actingAs($user = $this->participant());
         $reply = json_encode($this->output('What does the email ask you to hand over?', ['c1'])['json']);
         $this->app->instance('tutor.llm', new class($reply) implements \App\Services\Llm\LlmClient {
             public function __construct(private string $reply)
@@ -310,7 +331,7 @@ class TutorChatTest extends TestCase
 
     public function test_partial_mounts_the_component(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs($this->participant());
         $this->fake([]);
         $html = view('training.partials.m4-interactive')->render();
         $this->assertStringContainsString('Exercise 1 of 4', $html);
