@@ -19,6 +19,16 @@ class Training extends Model
         "conclusions",
         "generated",
         'user_id',
+        'generation_failed_at',
+        'generation_error',
+        'llm_model',
+        'llm_usage',
+    ];
+
+    protected $casts = [
+        'generated' => 'boolean',
+        'generation_failed_at' => 'datetime',
+        'llm_usage' => 'array',
     ];
 
     public function user()

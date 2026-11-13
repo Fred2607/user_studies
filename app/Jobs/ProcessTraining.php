@@ -2,19 +2,48 @@
 
 namespace App\Jobs;
 
+use App\Models\Training;
+use App\Services\Llm\LlmClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Throwable;
 
-use App\Models\Training;
-
+/**
+ * Generates the 5 sections of a personalized training module with 5 sequential LLM calls,
+ * each one seeing the previous prompts and answers (same flow as the paper).
+ *
+ * Robustness:
+ * - Each LLM call has its own HTTP timeout (services.llm.timeout); transient API errors are
+ *   retried inside the LlmClient (SDK retries for Anthropic). If a call still fails, the job
+ *   fails and the queue retries it ($tries / $backoff).
+ * - $timeout covers 5 calls plus a margin. The worker must allow it
+ *   (`php artisan queue:work --timeout=<same value>`) and the queue's `retry_after`
+ *   (DB_QUEUE_RETRY_AFTER) must be greater, otherwise a running job is started twice.
+ * - Idempotency: every attempt regenerates all 5 sections and the training is saved only
+ *   at the end, so a failed attempt never leaves a half-generated module (sections depend
+ *   on the previous ones, so mixing attempts would break the narrative continuity).
+ * - When all attempts fail, failed() marks the training as failed; the waiting page shows
+ *   the error and lets the participant re-dispatch the job.
+ */
 class ProcessTraining implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public const SECTIONS = ["introduction", "scenario", "defense_strategies", "exercises", "conclusions"];
+
+    /** Attempts before failed() is called. */
+    public $tries = 3;
+
+    /** Seconds to wait before attempt 2 and 3. */
+    public $backoff = [30, 120];
+
+    /** Seconds before the worker kills an attempt; set in the constructor from the per-call timeout. */
+    public $timeout;
 
     protected $trainingId, $training_length, $training_personalization, $user_name,
         $personalization_prompt, $priming_prompt_scenario;
@@ -35,56 +64,81 @@ class ProcessTraining implements ShouldQueue
         $this->user_name = $user->name;
         $this->personalization_prompt = $user->getUserProfilePrompt();
         $this->priming_prompt_scenario = $user->getPrimingPromptScenario();  // used exclusively for the "primed" cond.
+
+        $this->timeout = count(self::SECTIONS) * (int) config('services.llm.timeout', 180) + 60;
     }
 
     /**
-     * @throws RequestException
+     * @throws \App\Services\Llm\LlmException when a section cannot be generated (the queue retries the job)
      */
-    public function handle()
+    public function handle(LlmClient $llm)
     {
         $training = Training::find($this->trainingId);
         if (!$training) {
             return;
         }
 
-        // OpenAI API Config
-        $apiKey = env('OPENAI_API_KEY');
-        $model = 'o3-mini';  // IF CHANGING THE MODEL, THE NON-CUSTOMIZED TRAINING SHOULD BE UPDATED (setNonCustomizedVersion@app/Models/Training.php)
-        $reasoning_effort = 'medium';
-        $temperature = 0.00001;
+        // Provider and model come from config (TRAINING_LLM_PROVIDER). The default "openai" provider uses o3-mini:
+        // IF CHANGING THE MODEL, THE NON-CUSTOMIZED TRAINING SHOULD BE UPDATED (setNonCustomizedVersion@app/Models/Training.php)
+        $timeout = (int) config('services.llm.timeout', 180);
 
         // Get user conditions
         $developer_prompt = $this->getDeveloperPrompt();
         $section_prompts = $this->getSectionPrompts();
 
-        $context = [['role' => 'developer', 'content' => $developer_prompt]];
-        //error_log($apiKey);
-        foreach (["introduction", "scenario", "defense_strategies", "exercises", "conclusions"]  as $section) {
+        // Context: the developer prompt is the system prompt; previous prompts and answers are the conversation.
+        $context = [];
+        $sections = [];
+        $usage = ['input_tokens' => 0, 'output_tokens' => 0, 'calls' => 0];
+        $models = [];
+
+        foreach (self::SECTIONS as $section) {
             $prompt = $section_prompts[$section];
 
-            // 2 min timeout
-            $response = Http::withHeaders([
-                'Authorization' => "Bearer $apiKey",
-                'Content-Type' => 'application/json',
-            ])->timeout(600)->retry(3,200000)->post('https://api.openai.com/v1/chat/completions', [
-                'model'    => $model,
-                'reasoning_effort' => $reasoning_effort,
-                'messages' => array_merge($context, [['role' => 'user', 'content' => $prompt]]),
-                //'temperature' => $temperature,
-            ]);
-            if ($response->successful()) {
-                $generatedText = $response['choices'][0]['message']['content'] ?? '<p>Failed to generate content.</p>';
-                $training->$section = $generatedText; // add the section text to the training model
-                // Maintain context
-                $context[] = ['role' => 'user', 'content' => $prompt];
-            } else {
-               $generatedText = $response->body(); //'<p>Failed to generate content.</p>';
-               $response->throw();
-            }
-            $context[] = ['role' => 'assistant', 'content' => $generatedText];
+            $response = $llm->complete(
+                $developer_prompt,
+                array_merge($context, [['role' => 'user', 'content' => $prompt]]),
+                ['timeout' => $timeout]
+            );
+
+            $sections[$section] = $response->text;
+            $usage['input_tokens'] += (int) ($response->usage['input_tokens'] ?? 0);
+            $usage['output_tokens'] += (int) ($response->usage['output_tokens'] ?? 0);
+            $usage['calls']++;
+            $models[$response->model] = true;
+
+            // Maintain context
+            $context[] = ['role' => 'user', 'content' => $prompt];
+            $context[] = ['role' => 'assistant', 'content' => $response->text];
         }
 
+        // Saved only once all sections exist (see class comment on idempotency).
+        foreach ($sections as $section => $text) {
+            $training->$section = $text;  // add the section text to the training model
+        }
+        // Several models only if a server-side fallback answered some of the calls.
+        $training->llm_model = implode(',', array_keys($models));
+        $training->llm_usage = $usage;
+        $training->generation_failed_at = null;
+        $training->generation_error = null;
         $training->generated = true;
+        $training->save();
+    }
+
+    /**
+     * Called by the queue after the last failed attempt: marks the training as failed so the
+     * waiting page can show it. Only the exception message is stored (no headers, no keys).
+     */
+    public function failed(Throwable $e): void
+    {
+        Log::error('Training generation failed', ['training_id' => $this->trainingId, 'error' => $e->getMessage()]);
+
+        $training = Training::find($this->trainingId);
+        if (!$training || $training->generated) {
+            return;
+        }
+        $training->generation_failed_at = now();
+        $training->generation_error = Str::limit(class_basename($e) . ': ' . $e->getMessage(), 495);
         $training->save();
     }
 
