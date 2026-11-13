@@ -51,7 +51,10 @@ final class OpenAiClient implements LlmClient
                 ->timeout((int) ($options['timeout'] ?? $this->timeout))
                 ->post(self::ENDPOINT, $payload);
         } catch (ConnectionException $e) {
-            throw new LlmException('OpenAI API connection error or timeout: ' . $e->getMessage(), true, $e);
+            if (LlmTimeoutException::isTimeout($e)) {
+                throw new LlmTimeoutException('OpenAI API request timed out: ' . $e->getMessage(), $e);
+            }
+            throw new LlmException('OpenAI API connection error: ' . $e->getMessage(), true, $e);
         }
 
         if ($response->failed()) {

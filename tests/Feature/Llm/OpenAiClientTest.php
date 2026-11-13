@@ -63,6 +63,24 @@ class OpenAiClientTest extends TestCase
         }
     }
 
+    public function test_transport_timeout_raises_llm_timeout_exception(): void
+    {
+        Http::fake(fn () => throw new \GuzzleHttp\Exception\ConnectException(
+            'cURL error 28: Operation timed out after 60000 milliseconds',
+            new \GuzzleHttp\Psr7\Request('POST', OpenAiClient::ENDPOINT),
+            null,
+            ['errno' => 28]
+        ));
+
+        try {
+            $this->client()->complete('sys', [['role' => 'user', 'content' => 'x']]);
+            $this->fail('Expected LlmTimeoutException');
+        } catch (\App\Services\Llm\LlmTimeoutException $e) {
+            $this->assertTrue($e->retryable);
+            $this->assertMatchesRegularExpression('/timed out/i', $e->getMessage());
+        }
+    }
+
     public function test_truncated_or_empty_output_throws(): void
     {
         Http::fake([OpenAiClient::ENDPOINT => Http::sequence()

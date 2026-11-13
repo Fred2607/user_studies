@@ -206,10 +206,10 @@ class AnthropicClientTest extends TestCase
         }
     }
 
-    public function test_connection_error_is_retryable(): void
+    public function test_connection_error_is_retryable_but_not_a_timeout(): void
     {
         $client = $this->client([
-            new \GuzzleHttp\Exception\ConnectException('timed out', new \GuzzleHttp\Psr7\Request('POST', '/')),
+            new \GuzzleHttp\Exception\ConnectException('Connection refused', new \GuzzleHttp\Psr7\Request('POST', '/'), null, ['errno' => 7]),
         ]);
 
         try {
@@ -217,6 +217,22 @@ class AnthropicClientTest extends TestCase
             $this->fail('Expected LlmException');
         } catch (LlmException $e) {
             $this->assertTrue($e->retryable);
+            $this->assertNotInstanceOf(\App\Services\Llm\LlmTimeoutException::class, $e);
+        }
+    }
+
+    public function test_transport_timeout_raises_llm_timeout_exception(): void
+    {
+        $client = $this->client([
+            new \GuzzleHttp\Exception\ConnectException('cURL error 28: Operation timed out after 180001 milliseconds', new \GuzzleHttp\Psr7\Request('POST', '/'), null, ['errno' => 28]),
+        ]);
+
+        try {
+            $client->complete('sys', [['role' => 'user', 'content' => 'x']]);
+            $this->fail('Expected LlmTimeoutException');
+        } catch (\App\Services\Llm\LlmTimeoutException $e) {
+            $this->assertTrue($e->retryable);
+            $this->assertMatchesRegularExpression('/timed out/i', $e->getMessage());
         }
     }
 

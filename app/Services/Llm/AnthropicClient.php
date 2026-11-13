@@ -99,7 +99,10 @@ final class AnthropicClient implements LlmClient
             $detail = $e->getAPIMessage() ?? class_basename($e);
             throw new LlmException("Anthropic API error (HTTP $status): $detail", $retryable, $e);
         } catch (APIConnectionException $e) {
-            throw new LlmException('Anthropic API connection error or timeout: ' . $e->getMessage(), true, $e);
+            if (LlmTimeoutException::isTimeout($e)) {
+                throw new LlmTimeoutException('Anthropic API request timed out: ' . $e->getMessage(), $e);
+            }
+            throw new LlmException('Anthropic API connection error: ' . $e->getMessage(), true, $e);
         } catch (AnthropicException $e) {
             throw new LlmException('Anthropic SDK error: ' . $e->getMessage(), false, $e);
         }
