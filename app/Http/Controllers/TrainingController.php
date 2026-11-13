@@ -26,7 +26,7 @@ class TrainingController extends Controller
         }
 
         if (! $training->generated) {
-            return view("training.status_not_ready");
+            return view("training.status_not_ready", ["training" => $training]);
         }
         $training_length = $user->training_length;
         if (env("DISABLE_TIMERS") == "true") {
@@ -74,6 +74,45 @@ class TrainingController extends Controller
         }
         return $training;
         //return redirect()->route('emails', ['folder' => 'inbox']);  // Start pre-train classification task
+    }
+
+
+    /**
+     * JSON status of the current user's training generation, polled by the waiting page.
+     */
+    public function generationStatus()
+    {
+        $training = Auth::user()->training;
+        if ($training === null) {
+            return response()->json(['generated' => false, 'failed' => false], 404);
+        }
+
+        return response()->json([
+            'generated' => (bool) $training->generated,
+            'failed' => $training->generation_failed_at !== null,
+        ]);
+    }
+
+
+    /**
+     * Re-dispatches the generation of the current user's training after a failure.
+     * Only the authenticated user's own training is considered, and only if it failed.
+     */
+    public function retryGeneration(Request $request)
+    {
+        $user = Auth::user();
+        $training = $user->training;
+        if ($training === null || $training->generated || $training->generation_failed_at === null) {
+            abort(409, 'Training generation is not in a failed state.');
+        }
+
+        $training->update(['generation_failed_at' => null, 'generation_error' => null]);
+        ProcessTraining::dispatch($training->id, $user);
+
+        if ($request->expectsJson()) {
+            return response()->json(['generated' => false, 'failed' => false], 202);
+        }
+        return redirect()->route('training.show');
     }
 
 
