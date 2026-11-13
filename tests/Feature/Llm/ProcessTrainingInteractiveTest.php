@@ -7,6 +7,7 @@ use App\Models\Training;
 use App\Services\Llm\LlmClient;
 use App\Services\Llm\LlmResponse;
 use App\Services\Training\InteractiveBlockException;
+use App\Services\Tutor\DialogSession;
 use App\Services\Tutor\Materials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -58,6 +59,8 @@ class ProcessTrainingInteractiveTest extends TestCase
         $this->assertEquals(InteractiveFixtures::email()['clues'], $data['scenario_email']['clues']);
         $this->assertEquals(InteractiveFixtures::guidelines(), $data['defense_guidelines']);
         $this->assertSequenceFollowsTheBank($data['m4']['sequence']);
+        $this->assertIsInt($data['m4']['seed']);
+        $this->assertSame($data['m4']['sequence'], DialogSession::drawSequence($this->bankMeta(), $data['m4']['seed'])['sequence']);
     }
 
     public function test_invalid_block_fails_the_attempt_before_the_next_calls(): void
@@ -118,8 +121,10 @@ class ProcessTrainingInteractiveTest extends TestCase
     {
         $positions = [];
         for ($i = 0; $i < 60; $i++) {
-            $sequence = ProcessTraining::moduleFourSequence();
+            $draw = ProcessTraining::moduleFourSequence();
+            $sequence = $draw['sequence'];
             $this->assertSequenceFollowsTheBank($sequence);
+            $this->assertSame($draw['legitimate_position'], array_search($this->bankMeta()['legitimate_main'], $sequence, true) + 1);
             $positions[array_search($this->bankMeta()['legitimate_main'], $sequence, true) + 1] = true;
         }
         ksort($positions);

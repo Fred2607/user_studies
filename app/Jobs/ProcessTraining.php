@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Training;
 use App\Services\Llm\LlmClient;
 use App\Services\Training\InteractiveBlocks;
+use App\Services\Tutor\DialogSession;
 use App\Services\Tutor\Materials;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -138,7 +139,8 @@ class ProcessTraining implements ShouldQueue
         }
         // Several models only if a server-side fallback answered some of the calls.
         if ($this->isInteractive()) {
-            $interactive_data['m4'] = ['sequence' => self::moduleFourSequence()];
+            $draw = self::moduleFourSequence();
+            $interactive_data['m4'] = ['sequence' => $draw['sequence'], 'seed' => $draw['seed']];
             $training->interactive_data = $interactive_data;
         }
         $training->llm_model = implode(',', array_keys($models));
@@ -174,16 +176,14 @@ class ProcessTraining implements ShouldQueue
     /**
      * Order of the Module 4 emails, fixed per training: the bank's default sequence with the
      * legitimate email inserted at a random position between 2 and 4 (emails-m4.json, _meta).
+     * Single implementation of the rule: DialogSession::drawSequence (seeded, reproducible).
      *
-     * @return list<string> email ids
+     * @return array{seed: int, sequence: list<string>, legitimate_position: int}
      */
     public static function moduleFourSequence(?Materials $materials = null): array
     {
         $meta = ($materials ?? new Materials())->loadEmailBank()['_meta'];
-        $sequence = array_values($meta['default_sequence']);
-        $position = random_int(2, min(4, count($sequence) + 1));  // 1-based
-        array_splice($sequence, $position - 1, 0, [$meta['legitimate_main']]);
-        return $sequence;
+        return DialogSession::drawSequence($meta);
     }
 
     private function getDeveloperPrompt()
