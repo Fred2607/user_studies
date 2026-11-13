@@ -165,10 +165,14 @@ class TutorConversation
         return $dialog;
     }
 
-    /** Browser-safe view of the current email (only `_meta.browser_safe_fields`, first name filled in). */
+    /**
+     * Browser-safe view of the current email (only `_meta.browser_safe_fields`, first name filled in).
+     * The card id is never projected even if listed: ids encode the answer (m4-p* phishing, m4-l* legitimate).
+     */
     public function browserEmail(DialogSession $dialog): array
     {
-        $email = BrowserEmail::project($dialog->card, $this->meta()['browser_safe_fields']);
+        $fields = array_values(array_diff($this->meta()['browser_safe_fields'], ['id']));
+        $email = BrowserEmail::project($dialog->card, $fields);
 
         return BrowserEmail::personalise($email, $this->displayName());
     }

@@ -249,6 +249,27 @@ class TutorChatTest extends TestCase
         $this->assertNoSecrets($c, $secrets);
     }
 
+    public function test_bank_email_ids_never_reach_the_browser(): void
+    {
+        $ids = array_column($this->bank['emails'], 'id');
+        foreach ($ids as $id) {
+            $this->actingAs($user = $this->participant());
+            TutorSession::create(['user_id' => $user->id, 'training_id' => $user->training->id, 'seed' => 1, 'sequence' => [$id], 'legitimate_position' => 1]);
+            $this->fake([]);
+
+            $c = Livewire::test(TutorChat::class)->assertSee($this->card($id)['subject']);
+            $surface = ($c->payload['effects']['html'] ?? '').json_encode($c->payload['serverMemo'] ?? []);
+            // The projection handed to the view carries no id either (so a future template cannot print it).
+            $conversation = new \App\Services\Tutor\TutorConversation($user);
+            $projection = $conversation->browserEmail($conversation->dialog());
+            $this->assertArrayNotHasKey('id', $projection);
+            $surface .= json_encode($projection);
+            foreach ($ids as $secret) {
+                $this->assertStringNotContainsString($secret, $surface, "{$secret} leaked while showing {$id}");
+            }
+        }
+    }
+
     private function assertNoSecrets($component, array $secrets): void
     {
         // Rendered HTML (escaped and raw) and the serialised Livewire state shipped with it.

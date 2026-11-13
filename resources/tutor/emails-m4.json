@@ -21,7 +21,6 @@
       "4": "low"
     },
     "browser_safe_fields": [
-      "id",
       "context",
       "sender_name",
       "sender_address",

@@ -1,6 +1,6 @@
 # Module 4 tutor core (PHP port of `prototipo/tutor-core`)
 
-Faithful port of the TypeScript core: same materials (`resources/tutor/`, copied unchanged; path from `config('tutor.materials_dir')`), same rules, same 22 harness cases. No UI, no DB, no network.
+Faithful port of the TypeScript core: same materials (`resources/tutor/`, copied from `prototipo/materiali/`, see the divergence below; path from `config('tutor.materials_dir')`), same rules, same 22 harness cases. No UI, no DB, no network.
 
 | TS | PHP |
 |---|---|
@@ -13,6 +13,10 @@ Faithful port of the TypeScript core: same materials (`resources/tutor/`, copied
 | `LLMProvider` / `MockProvider` | `App\Services\Llm\LlmClient` / `FakeLlmClient` |
 | `harness/cases.ts`, `run.ts` | `Harness\HarnessCases`, `Harness\HarnessRunner`, `php artisan tutor:harness` |
 | string unions | enums `HelpLevel`, `Classification`, `TurnType`, `Phase`, `CloseReason`, `FailureType` |
+
+## Divergences from the prototype materials
+
+- `emails-m4.json`: `_meta.browser_safe_fields` no longer lists `id` (security review, 2026-11-13). Card ids encode the answer (`m4-p*` phishing, `m4-l*` legitimate), so they must not reach the browser; `TutorConversation::browserEmail` also drops `id` defensively. The prototype copy (`~/Developer/Tesi/prototipo/materiali/emails-m4.json`) is unchanged: re-apply this edit if the file is copied again.
 
 ## Where PHP forced a different mechanism (behaviour kept identical)
 
