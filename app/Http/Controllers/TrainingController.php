@@ -128,7 +128,8 @@ class TrainingController extends Controller
     public function completeTraining(Request $request)
     {
         $user = Auth::user();
-        $timeSpent = $request->query('time', 0); // Get time from URL
+        // Seconds spent, from the URL; integer column, so anything non-numeric becomes 0 instead of a SQL error.
+        $timeSpent = max(0, (int) $request->query('time', 0));
 
         $user_training = $user->training;
         if ($user_training === null) {
@@ -142,10 +143,9 @@ class TrainingController extends Controller
         }
 
         // Save time spent in DB or perform necessary actions
-        $user_training->update([
-            'training_completed_at' => now(),
-            'time_taken' => $timeSpent
-        ]);
+        // The completion time is users.training_completed (trainings.completed_at was dropped upstream in
+        // 2025_03_28_133204); the training row keeps only the time spent.
+        $user_training->update(['time_taken' => $timeSpent]);
 
         $user->training_completed = now();
         $user->save();

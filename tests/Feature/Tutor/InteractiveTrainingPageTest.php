@@ -103,7 +103,7 @@ class InteractiveTrainingPageTest extends TestCase
             ->assertSessionHas('error');
         $user->refresh();
         $this->assertNull($user->training_completed);
-        $this->assertNull($user->training->training_completed_at);
+        $this->assertSame(0, $user->training->time_taken);
 
         // Without any tutor session at all (chat never mounted) the gate holds as well.
         TutorSession::where('user_id', $user->id)->delete();
@@ -123,13 +123,16 @@ class InteractiveTrainingPageTest extends TestCase
         $this->actingAs($user)->get(route('training.complete', ['time' => 42]))
             ->assertRedirect(route('emails', ['folder' => 'inbox']));
         $this->assertNotNull($user->fresh()->training_completed);
+        $training = $user->fresh()->training;
+        $this->assertEquals(42, $training->time_taken);
     }
 
     public function test_paper_conditions_complete_without_a_tutor(): void
     {
         $user = $this->atTrainingPhase('yes');
 
-        $this->actingAs($user)->get(route('training.complete'))->assertRedirect(route('emails', ['folder' => 'inbox']));
+        $this->actingAs($user)->get(route('training.complete', ['time' => 315]))->assertRedirect(route('emails', ['folder' => 'inbox']));
         $this->assertNotNull($user->fresh()->training_completed);
+        $this->assertEquals(315, $user->fresh()->training->time_taken);
     }
 }
