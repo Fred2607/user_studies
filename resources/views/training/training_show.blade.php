@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="slot">
-        <div x-data="load()" class="min-h-screen bg-gray-200 flex justify-center items-center">
+        <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
             <div class="p-12 m-10 bg-white md:min-w-100 rounded-2xl shadow-xl z-20">
                 <h1 class="text-3xl font-bold text-center mb-5">Anti-phishing Training</h1>
 
@@ -85,7 +85,7 @@
                         </div>
                         <div x-show="step >= 0" class="flex-1"></div>
                         <div :class="{'flex-1 w-full': step === 0}">
-                            <button type="button" id="next" @click="next()"
+                            <button type="button" id="next"@if ($training->isInteractive()) :disabled="step === 4 && !tutorDone" :title="step === 4 && !tutorDone ? 'Complete the exercises with the tutor first' : ''" :style="step === 4 && !tutorDone ? 'opacity: 0.5; cursor: not-allowed' : ''"@endif @click="next()"
                                     :class="{'w-full' : step === 0, 'w-64' : step > 0}"
                                     class="py-3 text-lg text-white bg-blue-500 hover:bg-blue-800 rounded-2xl">Next
                             </button>
@@ -120,6 +120,14 @@
 
             return {
                 step: 0,
+@if ($training->isInteractive())
+                // Interactive condition: Module 4 (step 4) is passed only once the tutor chat is completed
+                // (browser event tutor-completed, or data-tutor-completed="true" after a reload).
+                tutorDone: false,
+                init() {
+                    this.tutorDone = document.querySelector('[data-tutor-completed="true"]') !== null;
+                },
+@endif
                 canProceed: 1,  // the first step does not have time requirements
                 showModal: false, // Controls modal visibility
 
@@ -137,6 +145,11 @@
 
                 next() {
                     console.log(this.step, this.canProceed)
+@if ($training->isInteractive())
+                    if (this.step === 4 && !this.tutorDone) {
+                        return; // Module 4 not completed yet: Next stays disabled
+                    }
+@endif
                     if (this.step >= this.canProceed) {
                         this.showModal = true; // Show modal if user clicks too early
                         return; // Prevent advancing before time
