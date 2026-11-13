@@ -95,6 +95,28 @@ class ValidatorTest extends TutorTestCase
         $this->assertContains('G1:verdict_wording', $this->rules('It is not a scam. Why do you think so?'));
     }
 
+    public function test_g1_blocks_italian_verdict_wording(): void
+    {
+        foreach ([
+            'Questa email è phishing. Cosa noti nel mittente?',
+            'È legittima, cosa ti fa pensare il contrario?',
+            'Non è phishing: quale parte guarderesti?',
+            'Sembra una truffa. Cosa vedi nel link?',
+            "E' una truffa, perché lo pensi?",
+            'Il messaggio è autentico. Cosa noti?',
+            'Questa truffa usa un dominio diverso. Cosa vedi?',
+        ] as $message) {
+            $this->assertContains('G1:verdict_wording', $this->rules($message), $message);
+        }
+        foreach ([
+            "È vero che il mittente è importante. Cosa noti nell'indirizzo?",
+            'Che cosa ti fa pensare questo?',
+            'What makes you say so?',
+        ] as $message) {
+            $this->assertNotContains('G1:verdict_wording', $this->rules($message), $message);
+        }
+    }
+
     public function test_g2_the_closing_turn_may_not_contradict_the_card_verdict(): void
     {
         $closing = ['turnType' => TurnType::Closing];
