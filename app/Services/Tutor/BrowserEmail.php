@@ -2,6 +2,8 @@
 
 namespace App\Services\Tutor;
 
+use App\Services\Training\FirstName;
+
 /**
  * Projection of an email card onto `_meta.browser_safe_fields` (cap4 par. 4.2.3): the only data of a card that may
  * reach the browser while its dialog is open. Supports top-level fields and `list[].field` paths.
@@ -43,8 +45,7 @@ final class BrowserEmail
     {
         array_walk_recursive($email, function (&$value, $key) use ($firstName) {
             if (is_string($value)) {
-                $name = $key === 'body_html' ? htmlspecialchars($firstName, ENT_QUOTES) : $firstName;
-                $value = str_replace('{{first_name}}', $name, $value);
+                $value = $key === 'body_html' ? FirstName::fillHtml($value, $firstName) : FirstName::fillText($value, $firstName);
             }
         });
 

@@ -18,8 +18,9 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('training_id')->nullable()->constrained('trainings')->nullOnDelete();
-            // Draw of the sequence (DialogSession::drawSequence): reproducible from the seed.
-            $table->unsignedInteger('seed');
+            // Email sequence: trainings.interactive_data.m4.sequence when present (seed null), otherwise drawn here
+            // with DialogSession::drawSequence (reproducible from the seed).
+            $table->unsignedInteger('seed')->nullable();
             $table->json('sequence');
             $table->unsignedTinyInteger('legitimate_position');
             // 1-based position of the email currently on screen.

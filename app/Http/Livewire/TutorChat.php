@@ -2,6 +2,7 @@
 
 namespace App\Http\Livewire;
 
+use App\Services\Training\FirstName;
 use App\Services\Tutor\ChatSubmitResult;
 use App\Services\Tutor\Classification;
 use App\Services\Tutor\Phase;
@@ -109,7 +110,7 @@ class TutorChat extends Component
                 'label' => $i['label'] ?? '',
                 'explanation' => $i['explanation'] ?? '',
                 'field' => $i['target']['field'] ?? null,
-                'text' => isset($i['target']['text']) ? str_replace('{{first_name}}', $this->firstName(), $i['target']['text']) : null,
+                'text' => isset($i['target']['text']) ? FirstName::fillText($i['target']['text'], $conversation->displayName()) : null,
                 'main' => ! empty($i['main']),
             ], $items);
             $closing = [
@@ -149,12 +150,6 @@ class TutorChat extends Component
         'attachment' => 'Attachment',
     ];
 
-    private function firstName(): string
-    {
-        $first = trim(explode(' ', trim((string) auth()->user()?->name))[0] ?? '');
-
-        return $first !== '' ? $first : 'there';
-    }
 
     private static function formatDate(?string $date): ?string
     {

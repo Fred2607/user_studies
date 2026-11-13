@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tutor;
 
 use App\Http\Livewire\TutorChat;
+use App\Models\Training;
 use App\Models\TrainingResponse;
 use App\Models\TutorSession;
 use App\Models\TutorTurn;
@@ -314,5 +315,44 @@ class TutorChatTest extends TestCase
         $html = view('training.partials.m4-interactive')->render();
         $this->assertStringContainsString('Exercise 1 of 4', $html);
         $this->assertStringContainsString('wire:id', $html);
+    }
+    public function test_uses_the_sequence_and_guidelines_of_the_generated_training(): void
+    {
+        $this->actingAs($user = User::factory()->create(['name' => 'Ada']));
+        $sequence = ['m4-p2-airbnb', 'm4-l1-airbnb', 'm4-p1-icloud', 'm4-p3-coworker'];
+        $guideline = 'Check the domain after the @ in the sender address';
+        $training = Training::create(['user_id' => $user->id, 'interactive_data' => [
+            'm4' => ['sequence' => $sequence],
+            'defense_guidelines' => [['id' => 'g1', 'text' => $guideline, 'email_part' => 'sender']],
+        ]]);
+        $airbnb = $this->card('m4-p2-airbnb');
+        $fake = $this->fake([$this->output('What does the attachment ask you to do?', [], [], $airbnb)]);
+
+        $c = Livewire::test(TutorChat::class)->assertSee('Exercise 1 of 4')->assertSee($airbnb['subject']);
+        $session = TutorSession::where('user_id', $user->id)->sole();
+        $this->assertSame($training->id, $session->training_id);
+        $this->assertSame($sequence, $session->sequence);
+        $this->assertNull($session->seed);
+        $this->assertSame(2, $session->legitimate_position);
+
+        $this->send($c, 'phishing', 'The refund form attachment looks odd');
+        $this->assertStringContainsString($guideline, $fake->calls[0]['system'].json_encode($fake->calls[0]['messages']));
+        $turn = TutorTurn::where('user_id', $user->id)->sole();
+        $this->assertSame('m4-p2-airbnb', $turn->email_id);
+        $this->assertSame('high', $turn->help_level); // level = position in the sequence
+        $this->assertSame($training->id, $turn->training_id);
+    }
+
+    public function test_an_invalid_training_sequence_falls_back_to_a_drawn_one(): void
+    {
+        $this->actingAs($user = User::factory()->create());
+        Training::create(['user_id' => $user->id, 'interactive_data' => ['m4' => ['sequence' => ['not-a-card']]]]);
+        $this->fake([]);
+
+        Livewire::test(TutorChat::class)->assertSee('Exercise 1 of 4');
+        $session = TutorSession::where('user_id', $user->id)->sole();
+        $this->assertNotNull($session->seed);
+        $this->assertSame(self::FIRST, $session->sequence[0]);
+        $this->assertContains($this->bank['_meta']['legitimate_main'], $session->sequence);
     }
 }

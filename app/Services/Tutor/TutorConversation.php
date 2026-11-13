@@ -57,7 +57,7 @@ class TutorConversation
             ->where('training_id', $trainingId)
             ->first();
         if ($session === null) {
-            $draw = DialogSession::drawSequence($this->meta());
+            $draw = $this->trainingSequence() ?? DialogSession::drawSequence($this->meta());
             $session = TutorSession::firstOrCreate(
                 ['user_id' => $this->user->id, 'training_id' => $trainingId],
                 [
@@ -72,6 +72,59 @@ class TutorConversation
         }
 
         return $this->session = $session;
+    }
+
+    /** trainings.interactive_data written by the generation job (ProcessTraining, "interactive" condition). */
+    private function interactiveData(): array
+    {
+        $data = $this->user->training?->interactive_data;
+
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * Sequence fixed at generation time (`interactive_data.m4.sequence`), if present and made only of bank ids.
+     *
+     * @return array{seed: ?int, sequence: list<string>, legitimate_position: int}|null
+     */
+    private function trainingSequence(): ?array
+    {
+        $m4 = $this->interactiveData()['m4'] ?? null;
+        $sequence = is_array($m4) && is_array($m4['sequence'] ?? null) ? array_values($m4['sequence']) : [];
+        $known = array_column($this->bank['emails'], 'id');
+        if ($sequence === [] || array_diff($sequence, $known) !== [] || ! array_key_exists((string) count($sequence), $this->meta()['help_level_by_position'] ?? [])) {
+            return null;
+        }
+        $legitimate = 0;
+        foreach ($sequence as $i => $id) {
+            if (empty(Materials::findCard($this->bank, $id)['is_phishing'])) {
+                $legitimate = $i + 1;
+                break;
+            }
+        }
+
+        return ['seed' => isset($m4['seed']) ? (int) $m4['seed'] : null, 'sequence' => $sequence, 'legitimate_position' => $legitimate];
+    }
+
+    /**
+     * Module 3 guidelines of the generated training (`interactive_data.defense_guidelines`, items {id, text,
+     * email_part}), passed as they are to the tutor prompt; empty for trainings without them.
+     *
+     * @return list<array{id: string, text: string, email_part: string}>
+     */
+    private function module3Guidelines(): array
+    {
+        $guidelines = $this->interactiveData()['defense_guidelines'] ?? [];
+
+        return is_array($guidelines) ? array_values($guidelines) : [];
+    }
+
+    /** Value of {{first_name}} on screen (same source as Training::renderSection); never sent to the LLM. */
+    public function displayName(): string
+    {
+        $name = trim((string) $this->user->name);
+
+        return $name !== '' ? $name : 'there';
     }
 
     public function total(): int
@@ -99,6 +152,7 @@ class TutorConversation
             position: $position,
             levelMap: $this->meta()['help_level_by_position'] ?? null,
             config: ['exerciseTotal' => $this->total()],
+            module3Guidelines: $this->module3Guidelines(),
             previousMissedClues: array_values($session->missed_clues ?? []),
         );
         $session->state = $dialog->toArray();
@@ -111,9 +165,8 @@ class TutorConversation
     public function browserEmail(DialogSession $dialog): array
     {
         $email = BrowserEmail::project($dialog->card, $this->meta()['browser_safe_fields']);
-        $firstName = trim(explode(' ', trim((string) $this->user->name))[0] ?? '');
 
-        return BrowserEmail::personalise($email, $firstName !== '' ? $firstName : 'there');
+        return BrowserEmail::personalise($email, $this->displayName());
     }
 
     private function rateLimitKey(): string
