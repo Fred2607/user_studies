@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Services\Llm\AnthropicClient;
 use App\Services\Llm\LlmClient;
 use App\Services\Llm\OpenAiClient;
+use App\Services\Tutor\DemoLlmClient;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -41,7 +43,11 @@ class AppServiceProvider extends ServiceProvider
 
         // Module 4 tutor LLM (always Claude). No SDK retries: the tutor does its own single retry and then
         // falls back deterministically, so SDK retries would multiply the chat latency (up to ~3x the timeout).
-        $this->app->bind('tutor.llm', function () {
+        $this->app->bind('tutor.llm', function ($app) {
+            if (self::fakeTutorEnabled($app)) {
+                return new DemoLlmClient(delayMs: 700);  // local demo: no network, no cost
+            }
+
             return new AnthropicClient(
                 apiKey: (string) config('services.anthropic.key'),
                 model: (string) config('tutor.model'),
@@ -51,6 +57,15 @@ class AppServiceProvider extends ServiceProvider
                 maxRetries: 0,
             );
         });
+    }
+
+    /**
+     * Offline demo tutor: only when TUTOR_FAKE=true AND the app environment is exactly "local".
+     * In any other environment (production, testing, staging, ...) the flag is ignored.
+     */
+    public static function fakeTutorEnabled(Application $app): bool
+    {
+        return $app->environment('local') && config('tutor.fake') === true;
     }
 
     /**

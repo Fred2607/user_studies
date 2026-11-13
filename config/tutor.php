@@ -15,6 +15,9 @@ return [
     'effort' => env('TUTOR_EFFORT', 'low'),
     'max_tokens' => (int) env('TUTOR_MAX_TOKENS', 2000),
 
+    // Local demo only: offline DemoLlmClient instead of Claude. Ignored unless APP_ENV=local (AppServiceProvider).
+    'fake' => filter_var(env('TUTOR_FAKE', false), FILTER_VALIDATE_BOOLEAN),
+
     // TutorChat (Livewire): user messages sent to the tutor per user per minute; over the limit no LLM call is made.
     'rate_limit_per_minute' => (int) env('TUTOR_RATE_LIMIT_PER_MINUTE', 20),
 
