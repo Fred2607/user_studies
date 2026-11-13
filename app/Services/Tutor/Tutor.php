@@ -99,10 +99,12 @@ class Tutor
         return (hrtime(true) - $start) / 1e6;
     }
 
-    /** Clients report timeouts as an LlmException whose message says "timed out" / "timeout". */
+    /** Real clients raise LlmTimeoutException; the message check is kept for the fake client's simulated hang. */
     public static function looksLikeTimeout(Exception $e): bool
     {
-        return $e instanceof TutorTimeoutException || preg_match('/\btimed?[\s-]?out\b/i', $e->getMessage()) === 1;
+        return $e instanceof TutorTimeoutException
+            || $e instanceof \App\Services\Llm\LlmTimeoutException
+            || preg_match('/\btimed?[\s-]?out\b/i', $e->getMessage()) === 1;
     }
 
     /** @param Closure(): TutorOutput $fallback */
