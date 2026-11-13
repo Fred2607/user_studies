@@ -9,4 +9,9 @@ return [
 
     // Per-call timeout of a tutor turn (ms); one retry, then the deterministic fallback (cap4 4.4.5).
     'timeout_ms' => (int) env('TUTOR_TIMEOUT_MS', 20000),
+
+    // Tutor client (container binding "tutor.llm"): Claude, low effort for chat latency, no SDK retries.
+    'model' => env('TUTOR_MODEL', env('ANTHROPIC_MODEL', 'claude-opus-5-5')),
+    'effort' => env('TUTOR_EFFORT', 'low'),
+    'max_tokens' => (int) env('TUTOR_MAX_TOKENS', 2000),
 ];

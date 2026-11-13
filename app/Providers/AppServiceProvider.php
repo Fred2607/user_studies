@@ -38,6 +38,19 @@ class AppServiceProvider extends ServiceProvider
                 timeout: $timeout,
             );
         });
+
+        // Module 4 tutor LLM (always Claude). No SDK retries: the tutor does its own single retry and then
+        // falls back deterministically, so SDK retries would multiply the chat latency (up to ~3x the timeout).
+        $this->app->bind('tutor.llm', function () {
+            return new AnthropicClient(
+                apiKey: (string) config('services.anthropic.key'),
+                model: (string) config('tutor.model'),
+                effort: (string) config('tutor.effort', 'low'),
+                timeout: (int) ceil(config('tutor.timeout_ms', 20000) / 1000),
+                maxTokens: (int) config('tutor.max_tokens', 2000),
+                maxRetries: 0,
+            );
+        });
     }
 
     /**
