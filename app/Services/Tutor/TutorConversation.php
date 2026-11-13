@@ -45,13 +45,17 @@ class TutorConversation
         return $this->user->training?->id;
     }
 
-    /** Current session of the user, created (with a fresh sequence draw) on first access. */
+    /**
+     * Current session of the user, created (with a fresh sequence draw) on first access.
+     * A user without a training has no Module 4 to run: 409, no session is created (training_id is NOT NULL).
+     */
     public function session(bool $fresh = false): TutorSession
     {
         if ($this->session !== null && ! $fresh) {
             return $this->session;
         }
         $trainingId = $this->trainingId();
+        abort_if($trainingId === null, 409, 'No training to attach the tutor to.');
         $session = TutorSession::query()
             ->where('user_id', $this->user->id)
             ->where('training_id', $trainingId)
@@ -161,10 +165,14 @@ class TutorConversation
         return $dialog;
     }
 
-    /** Browser-safe view of the current email (only `_meta.browser_safe_fields`, first name filled in). */
+    /**
+     * Browser-safe view of the current email (only `_meta.browser_safe_fields`, first name filled in).
+     * The card id is never projected even if listed: ids encode the answer (m4-p* phishing, m4-l* legitimate).
+     */
     public function browserEmail(DialogSession $dialog): array
     {
-        $email = BrowserEmail::project($dialog->card, $this->meta()['browser_safe_fields']);
+        $fields = array_values(array_diff($this->meta()['browser_safe_fields'], ['id']));
+        $email = BrowserEmail::project($dialog->card, $fields);
 
         return BrowserEmail::personalise($email, $this->displayName());
     }
@@ -316,6 +324,8 @@ class TutorConversation
                 'first_classification' => $dialog->firstClassification?->value,
                 'final_classification' => $dialog->classification?->value,
                 'replies' => $replies,
+                // Server-accepted recognized ids (ClueEvidence), not the model's claim (see tutor_turns).
+                'recognized' => $dialog->recognized,
                 'closed' => $dialog->phase === Phase::Closed,
                 'close_reason' => $dialog->closeReason?->value,
             ],
@@ -369,7 +379,8 @@ class TutorConversation
             'user_choice' => $choice?->value,
             'tutor_message' => $shown,
             'raw_output' => $attempts,
-            'validated_output' => $result->output->toArray(),
+            'validated_output' => $result->output->toArray(), // the model's raw claim of recognized ids
+            'accepted_clue_ids' => $dialog->lastClueCheck['accepted'] ?? [],
             'used_fallback' => $result->source === 'fallback',
             'validator_errors' => $errors === [] ? null : $errors,
             'model' => $models === [] ? null : end($models),

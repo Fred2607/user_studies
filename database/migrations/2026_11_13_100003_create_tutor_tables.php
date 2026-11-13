@@ -17,7 +17,8 @@ return new class extends Migration
         Schema::create('tutor_sessions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('training_id')->nullable()->constrained('trainings')->nullOnDelete();
+            // Always set: TutorConversation refuses (409) users without a training.
+            $table->foreignId('training_id')->constrained('trainings')->cascadeOnDelete();
             // Email sequence: trainings.interactive_data.m4.sequence when present (seed null), otherwise drawn here
             // with DialogSession::drawSequence (reproducible from the seed).
             $table->unsignedInteger('seed')->nullable();
@@ -54,6 +55,9 @@ return new class extends Migration
             $table->text('tutor_message')->nullable(); // null when the dialog message was suppressed
             $table->json('raw_output')->nullable(); // every attempt: raw reply, failure, violations
             $table->json('validated_output')->nullable(); // TutorOutput used (model or fallback)
+            // Ids of validated_output.recognized_clue_ids that the platform accepted (ClueEvidence: supported by the
+            // user's own messages); the difference with the model's claim is what the server rejected.
+            $table->json('accepted_clue_ids')->nullable();
             $table->boolean('used_fallback')->default(false);
             $table->json('validator_errors')->nullable();
             $table->string('model', 100)->nullable();

@@ -19,10 +19,14 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Same fallback as the previous enum migration: unknown conditions become 'yes'.
-        DB::table('users')
-            ->where('training_personalization', 'interactive')
-            ->update(['training_personalization' => 'yes']);
+        // Refuse instead of silently relabelling participants: mapping 'interactive' to 'yes' would mix the thesis
+        // condition into a paper condition and corrupt the analysis. Export/remove those users first.
+        $interactive = DB::table('users')->where('training_personalization', 'interactive')->count();
+        if ($interactive > 0) {
+            throw new RuntimeException(
+                "Refusing to roll back: {$interactive} user(s) have training_personalization = 'interactive'."
+            );
+        }
         DB::statement("ALTER TABLE users
             MODIFY training_personalization
             ENUM('no', 'yes', 'primed', 'few_shot', 'table')

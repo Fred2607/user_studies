@@ -41,6 +41,10 @@ final class Validator
         "/\\byou('re|\\s+are)\\s+(right|wrong|correct)\\s+to\\s+(classify|call|mark|flag|say|think)\\b/i",
         '/\byour\s+(answer|classification|choice)\s+is\s+(right|wrong|correct|incorrect)\b/i',
         '/\bchange\s+your\s+(answer|classification|choice|mind)\b/i',
+        // Italian (not in the TS core): the tutor must answer in English, but a model that switches language must
+        // not slip a verdict past G1. "è/sembra (una) truffa|phishing|legittima|autentica" and any "truffa".
+        "/(?<![\\p{L}\\p{N}_])(non\\s+)?(è|e'|sembra|pare)\\s+(un'|una\\s+|un\\s+)?(phishing|truffa|legittim[aoie]|autentic[aoie]|genuin[aoie])(?![\\p{L}\\p{N}_])/i",
+        '/(?<![\p{L}\p{N}_])truff[ae](?![\p{L}\p{N}_])/i',
     ];
 
     /** Closing turn (G2): the email/it stated with the polarity opposite to the card. */
@@ -192,7 +196,9 @@ final class Validator
         }
 
         // G8: disclosure of an item the user has not named (dialog only; the closing turn is meant to disclose).
-        $recognized = [...$ctx->recognizedBefore, ...$out->recognized_clue_ids];
+        // Only claims supported by the user's messages count (ClueEvidence): a prompt-injected "all recognized"
+        // must not unlock the disclosure of items the user never named.
+        $recognized = [...$ctx->recognizedBefore, ...ClueEvidence::filter($card, $out->recognized_clue_ids, $ctx->userTexts)['accepted']];
         $userSaid = fn (string $t) => array_filter($ctx->userTexts, fn (string $u) => Text::includesCi($u, $t)) !== [];
         $unnamed = array_values(array_filter(Materials::cardItems($card), fn (array $i) => ! in_array($i['id'], $recognized, true)));
         foreach ($unnamed as $item) {

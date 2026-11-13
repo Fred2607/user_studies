@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessTraining;
 use App\Models\Training;
+use App\Models\TutorSession;
 use App\Models\User;
 use DOMDocument;
 use DOMXPath;
@@ -127,14 +128,24 @@ class TrainingController extends Controller
     public function completeTraining(Request $request)
     {
         $user = Auth::user();
-        $timeSpent = $request->query('time', 0); // Get time from URL
+        // Seconds spent, from the URL; integer column, so anything non-numeric becomes 0 instead of a SQL error.
+        $timeSpent = max(0, (int) $request->query('time', 0));
+
+        $user_training = $user->training;
+        if ($user_training === null) {
+            return redirect()->route('training.show');
+        }
+        // Interactive condition: Module 4 is complete only when the tutor says so. The "Next" gate in
+        // training_show is client-side (Alpine `tutorDone`), so it is enforced here too.
+        if ($user_training->isInteractive() && ! $this->tutorCompleted($user_training)) {
+            return redirect()->route('training.show')
+                ->with('error', 'Please complete the Module 4 exercises with the tutor before finishing the training.');
+        }
 
         // Save time spent in DB or perform necessary actions
-        $user_training = $user->training;
-        $user_training->update([
-            'training_completed_at' => now(),
-            'time_taken' => $timeSpent
-        ]);
+        // The completion time is users.training_completed (trainings.completed_at was dropped upstream in
+        // 2025_03_28_133204); the training row keeps only the time spent.
+        $user_training->update(['time_taken' => $timeSpent]);
 
         $user->training_completed = now();
         $user->save();
@@ -142,6 +153,17 @@ class TrainingController extends Controller
         session(['startStudy' => true]);  // Needed to show instructions in the post-train phase
 
         return redirect()->route('emails', ['folder' => 'inbox']);  // Start post-train classification task
+    }
+
+
+    /** Whether the user's Module 4 tutor conversation for this training is finished (TutorConversation). */
+    private function tutorCompleted(Training $training): bool
+    {
+        return TutorSession::query()
+            ->where('user_id', $training->user_id)
+            ->where('training_id', $training->id)
+            ->whereNotNull('completed_at')
+            ->exists();
     }
 
 

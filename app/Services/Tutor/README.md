@@ -1,6 +1,6 @@
 # Module 4 tutor core (PHP port of `prototipo/tutor-core`)
 
-Faithful port of the TypeScript core: same materials (`resources/tutor/`, copied unchanged; path from `config('tutor.materials_dir')`), same rules, same 22 harness cases. No UI, no DB, no network.
+Faithful port of the TypeScript core: same materials (`resources/tutor/`, copied from `prototipo/materiali/`, see the divergence below; path from `config('tutor.materials_dir')`), same rules, same 22 harness cases. No UI, no DB, no network.
 
 | TS | PHP |
 |---|---|
@@ -13,6 +13,11 @@ Faithful port of the TypeScript core: same materials (`resources/tutor/`, copied
 | `LLMProvider` / `MockProvider` | `App\Services\Llm\LlmClient` / `FakeLlmClient` |
 | `harness/cases.ts`, `run.ts` | `Harness\HarnessCases`, `Harness\HarnessRunner`, `php artisan tutor:harness` |
 | string unions | enums `HelpLevel`, `Classification`, `TurnType`, `Phase`, `CloseReason`, `FailureType` |
+
+## Divergences from the prototype materials
+
+- `emails-m4.json`: `_meta.browser_safe_fields` no longer lists `id` (security review, 2026-11-13). Card ids encode the answer (`m4-p*` phishing, `m4-l*` legitimate), so they must not reach the browser; `TutorConversation::browserEmail` also drops `id` defensively. The prototype copy (`~/Developer/Tesi/prototipo/materiali/emails-m4.json`) is unchanged: re-apply this edit if the file is copied again.
+- Recognized clues: the model's `recognized_clue_ids` are only a claim. `ClueEvidence` accepts an id only if the user's own messages plausibly refer to it; the claim stays in `tutor_turns.validated_output`, the accepted set in `tutor_turns.accepted_clue_ids` and in the `tutor_turn` events (`recognized` = claim, `accepted`, `rejected`); `training_responses.response_json.recognized` holds the accepted set. Validator G8/G6 count only accepted claims as "named", so an injected claim cannot unlock the disclosure of an item.
 
 ## Where PHP forced a different mechanism (behaviour kept identical)
 

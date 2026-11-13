@@ -80,4 +80,59 @@ class InteractiveTrainingPageTest extends TestCase
         }
         $this->assertSame(0, TutorSession::count());
     }
+
+    /** Participant at the training phase (everything before the training completed), as RedirectToTheRightPhase expects. */
+    private function atTrainingPhase(string $personalization): \App\Models\User
+    {
+        [$user] = $this->render($personalization, $personalization === 'interactive' ? ['defense_guidelines' => self::GUIDELINES] : []);
+        $user->forceFill([
+            'given_consent' => now(), 'demographics_completed' => now(), 'bfi_completed' => now(), 'stp_completed' => now(),
+            'teique_completed' => now(), 'pre_training_completed' => now(),
+        ])->save();
+
+        return $user->fresh();
+    }
+
+    public function test_interactive_training_cannot_be_completed_before_the_tutor(): void
+    {
+        $user = $this->atTrainingPhase('interactive');
+        $this->assertFalse(TutorSession::where('user_id', $user->id)->sole()->isCompleted());
+
+        $this->actingAs($user)->get(route('training.complete', ['time' => 42]))
+            ->assertRedirect(route('training.show'))
+            ->assertSessionHas('error');
+        $user->refresh();
+        $this->assertNull($user->training_completed);
+        $this->assertSame(0, $user->training->time_taken);
+
+        // Without any tutor session at all (chat never mounted) the gate holds as well.
+        TutorSession::where('user_id', $user->id)->delete();
+        $this->get(route('training.complete'))->assertRedirect(route('training.show'));
+        $this->assertNull($user->fresh()->training_completed);
+
+        // The error is shown on the training page.
+        $this->withSession(['error' => 'Please complete the Module 4 exercises'])->get(route('training.show'))
+            ->assertSee('Please complete the Module 4 exercises');
+    }
+
+    public function test_interactive_training_completes_after_the_tutor(): void
+    {
+        $user = $this->atTrainingPhase('interactive');
+        TutorSession::where('user_id', $user->id)->update(['completed_at' => now()]);
+
+        $this->actingAs($user)->get(route('training.complete', ['time' => 42]))
+            ->assertRedirect(route('emails', ['folder' => 'inbox']));
+        $this->assertNotNull($user->fresh()->training_completed);
+        $training = $user->fresh()->training;
+        $this->assertEquals(42, $training->time_taken);
+    }
+
+    public function test_paper_conditions_complete_without_a_tutor(): void
+    {
+        $user = $this->atTrainingPhase('yes');
+
+        $this->actingAs($user)->get(route('training.complete', ['time' => 315]))->assertRedirect(route('emails', ['folder' => 'inbox']));
+        $this->assertNotNull($user->fresh()->training_completed);
+        $this->assertEquals(315, $user->fresh()->training->time_taken);
+    }
 }

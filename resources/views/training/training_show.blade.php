@@ -3,6 +3,9 @@
         <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
             <div class="p-12 m-10 bg-white md:min-w-100 rounded-2xl shadow-xl z-20">
                 <h1 class="text-3xl font-bold text-center mb-5">Anti-phishing Training</h1>
+                @if (session('error'))
+                    <div role="alert" class="mb-5 rounded-lg bg-red-100 px-4 py-3 text-red-800">{{ session('error') }}</div>
+                @endif
 
                 <div x-show="step === 0" id="section-training-descritpion">
                     <p class="text-justify text-xl">

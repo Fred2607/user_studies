@@ -25,6 +25,8 @@ class Training extends Model
         'llm_model',
         'llm_usage',
         'interactive_data',
+        // Seconds spent on the training, written by TrainingController::completeTraining (study data).
+        'time_taken',
     ];
 
     protected $casts = [
