@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Models\Training;
 use App\Services\Llm\LlmClient;
+use App\Services\Training\InteractiveBlocks;
+use App\Services\Tutor\Materials;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -29,6 +31,12 @@ use Throwable;
  *   on the previous ones, so mixing attempts would break the narrative continuity).
  * - When all attempts fail, failed() marks the training as failed; the waiting page shows
  *   the error and lets the participant re-dispatch the job.
+ *
+ * Thesis condition "interactive" (prototipo/materiali/generation-prompts-diff.md): same flow with
+ * modified prompts. The user's name never reaches the provider ({{first_name}} placeholder, replaced
+ * at render time); the model returns structured data as JSON blocks that are validated, stripped from
+ * the HTML and saved in trainings.interactive_data (an invalid block fails the attempt, retryable);
+ * Module 4 holds only the generated introduction, its emails come from the bank emails-m4.json.
  */
 class ProcessTraining implements ShouldQueue
 {
@@ -57,6 +65,8 @@ class ProcessTraining implements ShouldQueue
         - Few-Shot (training_personalization == "few_shot")
         - Table-Based (training_personalization == "table")
         - Guideline-Based (training_personalization == "primed")
+        Thesis condition:
+        - Interactive (training_personalization == "interactive"): Direct Profile + structured data
         */
         $this->trainingId = $trainingId;
         $this->training_length = $user->training_length;
@@ -89,6 +99,7 @@ class ProcessTraining implements ShouldQueue
         // Context: the developer prompt is the system prompt; previous prompts and answers are the conversation.
         $context = [];
         $sections = [];
+        $interactive_data = [];
         $usage = ['input_tokens' => 0, 'output_tokens' => 0, 'calls' => 0];
         $models = [];
 
@@ -102,6 +113,15 @@ class ProcessTraining implements ShouldQueue
             );
 
             $sections[$section] = $response->text;
+            if ($this->isInteractive()) {
+                // Checked right after each call so an invalid block does not pay for the remaining ones.
+                // The context keeps the raw answer: the next sections refer to the data blocks.
+                $parsed = InteractiveBlocks::extract($response->text, InteractiveBlocks::REQUIRED_BY_SECTION[$section] ?? []);
+                $sections[$section] = $parsed['html'];
+                foreach ($parsed['blocks'] as $role => $data) {
+                    $interactive_data[str_replace('-', '_', $role)] = $data;
+                }
+            }
             $usage['input_tokens'] += (int) ($response->usage['input_tokens'] ?? 0);
             $usage['output_tokens'] += (int) ($response->usage['output_tokens'] ?? 0);
             $usage['calls']++;
@@ -117,6 +137,10 @@ class ProcessTraining implements ShouldQueue
             $training->$section = $text;  // add the section text to the training model
         }
         // Several models only if a server-side fallback answered some of the calls.
+        if ($this->isInteractive()) {
+            $interactive_data['m4'] = ['sequence' => self::moduleFourSequence()];
+            $training->interactive_data = $interactive_data;
+        }
         $training->llm_model = implode(',', array_keys($models));
         $training->llm_usage = $usage;
         $training->generation_failed_at = null;
@@ -142,8 +166,36 @@ class ProcessTraining implements ShouldQueue
         $training->save();
     }
 
+    private function isInteractive(): bool
+    {
+        return $this->training_personalization === "interactive";
+    }
+
+    /**
+     * Order of the Module 4 emails, fixed per training: the bank's default sequence with the
+     * legitimate email inserted at a random position between 2 and 4 (emails-m4.json, _meta).
+     *
+     * @return list<string> email ids
+     */
+    public static function moduleFourSequence(?Materials $materials = null): array
+    {
+        $meta = ($materials ?? new Materials())->loadEmailBank()['_meta'];
+        $sequence = array_values($meta['default_sequence']);
+        $position = random_int(2, min(4, count($sequence) + 1));  // 1-based
+        array_splice($sequence, $position - 1, 0, [$meta['legitimate_main']]);
+        return $sequence;
+    }
+
     private function getDeveloperPrompt()
     {
+        if ($this->isInteractive()) {
+            // The name must not reach the provider (cap4 4.2.4): the model writes a placeholder.
+            $name_requirement = '- The content should be clear, engaging, and educational, and the user must be addressed by their first name. Do not invent a name: write the placeholder {{first_name}} exactly as shown wherever the name is needed; the platform will replace it.';
+            $output_format_extra = "\nSome submodules must also return machine-readable data. When a prompt asks for it, put the data inside the same <div> as <script type=\"application/json\" data-role=\"...\"> blocks, with exactly the fields requested. These blocks are never shown to the user and must contain valid JSON.";
+        } else {
+            $name_requirement = "- The content should be clear, engaging, and educational, and the user must be addressed by their first name, which is $this->user_name.";
+            $output_format_extra = "";
+        }
         $personalized_string = $this->training_personalization == "no" ? "" : "personalized";
         $minutes = $this->training_length == "short" ? "9" : "18";
         error_log("length condition: $this->training_length - $minutes minutes, personalization: $this->training_personalization");
@@ -159,18 +211,18 @@ You are asked to generate $personalized_string educational material for an anti�
 
 OUTPUT FORMAT
 Each submodule will be embedded in a webpage, so it must be valid HTML and wrapped in a <div> tag. Do NOT include a heading of the section (such as <h2>Introduction</h2>).
-Any <a> tag that you generate in the scenario and in the exercises must have both a valid href attribute, but must prevent the default action of redirecting the user to another website, as the user must never leave the current webpage.
+Any <a> tag that you generate in the scenario and in the exercises must have both a valid href attribute, but must prevent the default action of redirecting the user to another website, as the user must never leave the current webpage.$output_format_extra
 
 
 CONTENT AND STYLE REQUIREMENTS
 - The language must be accessible and simple to make the concepts understandable by users with no expertise in cybersecurity.
-- The content should be clear, engaging, and educational, and the user must be addressed by their first name, which is $this->user_name.
+$name_requirement
 - The content should provide the hard facts and clear guidance expected from an “expert” while also incorporating relatable narratives and examples that create a more personal connection.
 - The content should flow logically, ensuring a smooth and engaging user experience.
 - The submodules are shown by the user in the same session, one after the other. Therefore, generate each subsequent submodule as the continuation of the previous one(s).
 - Do not greet the user at the start of every submodule, but just in the introduction.
 ";
-        if ($this->training_personalization === "yes") {
+        if ($this->training_personalization === "yes" || $this->isInteractive()) {
             $prompt .= "
 
 TRAIT DESCRIPTIONS
@@ -327,6 +379,9 @@ $this->personalization_prompt
 
     private function getSectionPrompts(): array
     {
+        if ($this->isInteractive()) {
+            return $this->getInteractiveSectionPrompts();
+        }
         if ($this->training_length == "short") {
             $sections_times = ["introduction" => 1, "scenario" => 2, "defense_strategies" => 3, "exercises" => 2, "conclusions" => 1];
             $n_exercises = 2;
@@ -429,6 +484,99 @@ Conclusions ($s_time minutes, approx. $s_words words):
         return $prompts;
     }
 
+
+    /**
+     * Section prompts of the "interactive" condition: the Direct Profile prompts with the REPLACE/APPEND
+     * changes of prototipo/materiali/generation-prompts-diff.md (sections 1-5). Introduction, exercises and
+     * conclusions have fixed lengths; scenario and defense strategies keep the length of the condition.
+     */
+    private function getInteractiveSectionPrompts(): array
+    {
+        $long = $this->training_length != "short";
+        $scenario_time = $long ? 5 : 2;
+        $defense_time = $long ? 6 : 3;
+        $scenario_words = $scenario_time * 150;
+        $defense_words = $defense_time * 150;
+
+        $introduction = <<<'PROMPT'
+GOAL
+Generate the Introduction sub-module, which must be structured as follows.
+
+Opening task (data only):
+- First, decide the phishing email that you will develop in full in the Phishing Scenario sub-module.
+- Return only its header and context as a JSON block with data-role="scenario-header" and these fields:
+  "scenario_context": one or two sentences that set the scene in which the email arrives (who the reader is, what they are doing). Do not use the user's name or the {{first_name}} placeholder here.
+  "sender_name", "sender_address", "subject": as they will appear in the email.
+  "first_line": the first sentence of the email body.
+- The platform shows this header to the user, followed by the question "What would make you suspicious about this message?". Do not write the question, do not comment on the header and do not reveal which of its elements are suspicious, anywhere in this sub-module.
+
+Introduction to the Phishing Problem (1 min, approx. 100 words):
+- Briefly introduce the user to the training course.
+- Explain what the problem of phishing is and why it's dangerous.
+- Include a statement that presents some possible user vulnerabilities to phishing techniques based on the user's psychological profile.
+- Give an overview of what the whole training module will cover.
+PROMPT;
+
+        $scenario = "GOAL
+Generate the Phishing Scenario sub-module, which must be structured as follows.
+Phishing Scenario ($scenario_time minutes, approx. $scenario_words words):
+- Scenario Introduction: Briefly introduce a scenario with a realistic narrative that users might relate to, in which an email is suddenly received.
+" . <<<'PROMPT'
+- Interactive Phishing Email: develop in full the email whose header you wrote in the Introduction sub-module. Keep sender name, sender address, subject and first line identical. The email must contain common phishing techniques (e.g., deceptive URL, spoofed sender details, etc.), making sure to include phishing techniques the user is most susceptible to, according to the PERSONALIZATION REQUIREMENTS.
+  Return the email as a JSON block with data-role="scenario-email" (not as visible HTML), with these fields:
+  "sender_name", "sender_address", "reply_to" (or null), "recipient_name" (use {{first_name}}), "subject", "date" (ISO 8601),
+  "body_html": the body only, simple HTML without images, styles from external files or scripts; every link is an <a> tag with data-link-id and a real-looking href (never "#"),
+  "links": [{"id", "text", "href_real"}],
+  "attachments": [{"filename"}] (or []),
+  "clues": one entry per suspicious element, each with
+     "id" ("c1", "c2", ...),
+     "nist_category": one of "Error", "Technical indicator", "Visual presentation indicator", "Language and content", "Common tactic",
+     "target": {"field": one of "sender_name", "sender_address", "reply_to", "subject", "body", "link", "attachment", "text": the exact text of that field or an exact substring of the visible body text, "link_id" for links},
+     "label": max 6 words,
+     "explanation": 1-2 sentences describing the technique, written for a non-expert (this replaces the description shown on click),
+     "order": position in this fixed sequence: first the sender, then the subject and the tone, then the link, finally the request for data.
+- The platform renders the email, highlights one suspicious element at a time in the given order and shows its explanation when the user opens it. Do not write HTML for the email itself and do not write click handlers.
+- Interactive decision point: inside a <div data-role="decision-point">, insert an interactive prompt that asks the user what they would do in that situation, with a close-ended question (using HTML form elements like radio buttons). The platform shows it only after the user has opened all the suspicious elements.
+- Reflection & Learning: Provide immediate feedback based on the decision point, explaining why certain choices may lead to a compromise and reinforcing learning outcomes.
+PROMPT;
+
+        $defense_strategies = "GOAL
+Generate the Defense Strategies sub-module, which must be structured as follows.
+Defense Strategies ($defense_time minutes, approx. $defense_words words):
+- Present tailored defense strategies against common phishing techniques (e.g., “Double-check the sender’s domain carefully”, “Check the actual URL by hovering on a link”, etc.) covering the ones the user is most susceptible to, given their profile (e.g., “Since you often click links quickly, double-check the sender’s email and URL before clicking”, etc.).
+- Give clear actionable items that participants can easily follow to protect themselves.
+- This list of items must include directions on how to recognize a genuine email (e.g., by checking the domain).
+" . <<<'PROMPT'
+- Also return the actionable items as a JSON block with data-role="defense-guidelines": an array of 4 to 6 objects, each with
+  "id" ("g1", "g2", ...),
+  "text": the item exactly as the user should remember it, max 20 words, imperative form,
+  "email_part": the part of the Phishing Scenario email it refers to, chosen from this fixed list: "sender", "subject", "tone", "link", "attachment", "request", "greeting", "signature", "none".
+  At least one item must explain how to recognize a genuine email.
+- The platform renders these items as a diagram of the Phishing Scenario email, with each item connected to its part. Do not repeat the items as a list in the text: the text explains why the strategies work and how to apply them (approx. 350 words).
+PROMPT;
+
+        $exercises = <<<'PROMPT'
+GOAL
+Generate the Interactive Exercises sub-module, which must be structured as follows.
+Interactive Exercises introduction (approx. 70 words):
+- Introduce the exercises that follow. The platform will show some emails, one at a time; do not write any email, form, button or feedback.
+- Explain the task: for each email the user chooses "Phishing" or "Legitimate" and writes, in their own words, why.
+- Explain that a tutor will then ask a few questions about their reasoning instead of giving the answer, that the correct answer is shown at the end of each conversation, and that the tutor's help becomes lighter from one email to the next.
+- Do not say how many emails there are, nor how many are phishing or legitimate.
+- Remind the user not to write personal data in their answers.
+PROMPT;
+
+        $conclusions = <<<'PROMPT'
+GOAL
+Generate the Conclusions sub-module, which must be structured as follows.
+Conclusions (approx. 100 words):
+- Provide a quick recap of the importance of phishing awareness.
+- Provide a quick recap of the practical actions that the user can do to defend themselves. Be sure to cover only those already explained in the previous sub-modules. Do not phrase them as personal rules in the form "When ..., I ...": after this recap the user will write their own rules.
+- Separately, inside a <div data-role="thanks">, thank the user for attending the training and conclude the session. The platform shows this part only at the very end of the module.
+PROMPT;
+
+        return compact("introduction", "scenario", "defense_strategies", "exercises", "conclusions");
+    }
 
     private function getEmailExerciseSubPrompt($n_exercises){
         $services = ["Google", "Microsoft", "PayPal", "Revolut", "Netflix", "Apple", "Amazon", "Booking.com", "AirBnB"];

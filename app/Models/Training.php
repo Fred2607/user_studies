@@ -23,12 +23,14 @@ class Training extends Model
         'generation_error',
         'llm_model',
         'llm_usage',
+        'interactive_data',
     ];
 
     protected $casts = [
         'generated' => 'boolean',
         'generation_failed_at' => 'datetime',
         'llm_usage' => 'array',
+        'interactive_data' => 'array',
     ];
 
     public function user()
