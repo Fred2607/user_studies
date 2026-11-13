@@ -106,7 +106,14 @@ class TrainingController extends Controller
             abort(409, 'Training generation is not in a failed state.');
         }
 
-        $training->update(['generation_failed_at' => null, 'generation_error' => null]);
+        // Atomic compare-and-set: two concurrent retries must not dispatch two paid generation jobs.
+        $claimed = Training::whereKey($training->id)
+            ->where('generated', false)
+            ->whereNotNull('generation_failed_at')
+            ->update(['generation_failed_at' => null, 'generation_error' => null]);
+        if ($claimed !== 1) {
+            abort(409, 'Training generation is not in a failed state.');
+        }
         ProcessTraining::dispatch($training->id, $user);
 
         if ($request->expectsJson()) {
