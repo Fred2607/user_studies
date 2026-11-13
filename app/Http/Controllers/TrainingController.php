@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessTraining;
 use App\Models\Training;
+use App\Models\TutorSession;
 use App\Models\User;
 use DOMDocument;
 use DOMXPath;
@@ -129,8 +130,18 @@ class TrainingController extends Controller
         $user = Auth::user();
         $timeSpent = $request->query('time', 0); // Get time from URL
 
-        // Save time spent in DB or perform necessary actions
         $user_training = $user->training;
+        if ($user_training === null) {
+            return redirect()->route('training.show');
+        }
+        // Interactive condition: Module 4 is complete only when the tutor says so. The "Next" gate in
+        // training_show is client-side (Alpine `tutorDone`), so it is enforced here too.
+        if ($user_training->isInteractive() && ! $this->tutorCompleted($user_training)) {
+            return redirect()->route('training.show')
+                ->with('error', 'Please complete the Module 4 exercises with the tutor before finishing the training.');
+        }
+
+        // Save time spent in DB or perform necessary actions
         $user_training->update([
             'training_completed_at' => now(),
             'time_taken' => $timeSpent
@@ -142,6 +153,17 @@ class TrainingController extends Controller
         session(['startStudy' => true]);  // Needed to show instructions in the post-train phase
 
         return redirect()->route('emails', ['folder' => 'inbox']);  // Start post-train classification task
+    }
+
+
+    /** Whether the user's Module 4 tutor conversation for this training is finished (TutorConversation). */
+    private function tutorCompleted(Training $training): bool
+    {
+        return TutorSession::query()
+            ->where('user_id', $training->user_id)
+            ->where('training_id', $training->id)
+            ->whereNotNull('completed_at')
+            ->exists();
     }
 
 
