@@ -196,7 +196,9 @@ final class Validator
         }
 
         // G8: disclosure of an item the user has not named (dialog only; the closing turn is meant to disclose).
-        $recognized = [...$ctx->recognizedBefore, ...$out->recognized_clue_ids];
+        // Only claims supported by the user's messages count (ClueEvidence): a prompt-injected "all recognized"
+        // must not unlock the disclosure of items the user never named.
+        $recognized = [...$ctx->recognizedBefore, ...ClueEvidence::filter($card, $out->recognized_clue_ids, $ctx->userTexts)['accepted']];
         $userSaid = fn (string $t) => array_filter($ctx->userTexts, fn (string $u) => Text::includesCi($u, $t)) !== [];
         $unnamed = array_values(array_filter(Materials::cardItems($card), fn (array $i) => ! in_array($i['id'], $recognized, true)));
         foreach ($unnamed as $item) {

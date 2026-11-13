@@ -53,8 +53,19 @@ class DialogSession
     /** @var list<LogEvent> */
     public array $events = [];
 
-    /** @var list<string> ids recognized so far (insertion-ordered set) */
+    /**
+     * @var list<string> ids recognized so far (insertion-ordered set). Only ids accepted by ClueEvidence: the
+     * model's raw `recognized_clue_ids` are a claim that must be supported by the user's own messages.
+     */
     public array $recognized = [];
+
+    /**
+     * Outcome of the plausibility check of the last applied tutor turn (not persisted: read right after
+     * applyDialogResult / applyClosingResult, e.g. by TutorConversation for tutor_turns.accepted_clue_ids).
+     *
+     * @var array{claimed: list<string>, accepted: list<string>, rejected: list<string>}|null
+     */
+    public ?array $lastClueCheck = null;
 
     public Phase $phase = Phase::AwaitingExplanation;
 
@@ -281,7 +292,41 @@ class DialogSession
         $this->history[] = new DialogTurn('tutor', $text, null, count($this->history) + 1);
     }
 
-    /** Marks ids as recognized during a replayed dialog. */
+    /**
+     * Applies the ids the model claims as recognized: an id not yet recognized counts only if the user's own
+     * messages plausibly refer to it (ClueEvidence); the outcome is kept in `lastClueCheck` for the logs.
+     *
+     * @param list<string> $claimed
+     * @return array{claimed: list<string>, accepted: list<string>, rejected: list<string>}
+     */
+    public function acceptClaimedRecognized(array $claimed): array
+    {
+        $claimed = array_values(array_unique($claimed));
+        $new = array_values(array_filter($claimed, fn ($id) => ! in_array($id, $this->recognized, true)));
+        $check = ClueEvidence::filter($this->card, $new, $this->userTexts());
+        $this->markRecognized($check['accepted']);
+
+        return $this->lastClueCheck = [
+            'claimed' => $claimed,
+            'accepted' => array_values(array_filter($claimed, fn ($id) => in_array($id, $this->recognized, true))),
+            'rejected' => $check['rejected'],
+        ];
+    }
+
+    /** @return list<string> the user's messages on this email */
+    private function userTexts(): array
+    {
+        $texts = [];
+        foreach ($this->history as $t) {
+            if ($t->author === 'user') {
+                $texts[] = $t->text;
+            }
+        }
+
+        return $texts;
+    }
+
+    /** Marks ids as recognized without any check (replay of a recorded dialog, e.g. `recognizedBefore` in the harness). */
     public function markRecognized(array $ids): void
     {
         foreach ($ids as $id) {
@@ -327,14 +372,7 @@ class DialogSession
 
     public function validationContext(TurnType $turnType): ValidationContext
     {
-        $userTexts = [];
-        foreach ($this->history as $t) {
-            if ($t->author === 'user') {
-                $userTexts[] = $t->text;
-            }
-        }
-
-        return new ValidationContext($this->card, $turnType, $this->helpLevel, $this->lastDontKnowHeuristic, $userTexts, $this->recognized);
+        return new ValidationContext($this->card, $turnType, $this->helpLevel, $this->lastDontKnowHeuristic, $this->userTexts(), $this->recognized);
     }
 
     private function baseOutput(string $message): TutorOutput
@@ -409,7 +447,9 @@ class DialogSession
             'turnType' => $turnType->value,
             'source' => $result->source,
             'attempts' => count($result->attempts),
-            'recognized' => $o->recognized_clue_ids,
+            'recognized' => $o->recognized_clue_ids, // the model's claim, as returned
+            'accepted' => $this->lastClueCheck['accepted'] ?? [],
+            'rejected' => $this->lastClueCheck['rejected'] ?? [],
             'missing' => $o->missing_clue_ids,
             'focus' => $o->focus_clue_id,
         ]);
@@ -443,7 +483,7 @@ class DialogSession
             throw new LogicException("No dialog turn expected in phase {$this->phase->value}");
         }
         $o = $result->output;
-        $this->markRecognized($o->recognized_clue_ids);
+        $this->acceptClaimedRecognized($o->recognized_clue_ids);
         if ($o->minimal_reply && ! $this->lastMinimalHeuristic && $this->userReplyCount > 1) {
             $this->consecutiveMinimal = $this->prevConsecutiveMinimal + 1;
         }
@@ -477,7 +517,7 @@ class DialogSession
         if ($this->phase !== Phase::Closing) {
             throw new LogicException("No closing turn expected in phase {$this->phase->value}");
         }
-        $this->markRecognized($result->output->recognized_clue_ids);
+        $this->acceptClaimedRecognized($result->output->recognized_clue_ids);
         $this->logTurnResult($result, TurnType::Closing);
         $items = Materials::cardItems($this->card);
         $this->closingView = new ClosingView(

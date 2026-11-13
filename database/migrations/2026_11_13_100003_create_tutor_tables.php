@@ -55,6 +55,9 @@ return new class extends Migration
             $table->text('tutor_message')->nullable(); // null when the dialog message was suppressed
             $table->json('raw_output')->nullable(); // every attempt: raw reply, failure, violations
             $table->json('validated_output')->nullable(); // TutorOutput used (model or fallback)
+            // Ids of validated_output.recognized_clue_ids that the platform accepted (ClueEvidence: supported by the
+            // user's own messages); the difference with the model's claim is what the server rejected.
+            $table->json('accepted_clue_ids')->nullable();
             $table->boolean('used_fallback')->default(false);
             $table->json('validator_errors')->nullable();
             $table->string('model', 100)->nullable();

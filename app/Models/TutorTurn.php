@@ -22,6 +22,7 @@ class TutorTurn extends Model
         'tutor_message',
         'raw_output',
         'validated_output',
+        'accepted_clue_ids',
         'used_fallback',
         'validator_errors',
         'model',
@@ -33,6 +34,7 @@ class TutorTurn extends Model
     protected $casts = [
         'raw_output' => 'array',
         'validated_output' => 'array',
+        'accepted_clue_ids' => 'array',
         'validator_errors' => 'array',
         'used_fallback' => 'boolean',
     ];
