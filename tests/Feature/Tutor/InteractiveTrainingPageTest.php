@@ -62,6 +62,18 @@ class InteractiveTrainingPageTest extends TestCase
         $this->assertStringContainsString('document.querySelector(\'[data-tutor-completed="true"]\')', $html);
     }
 
+    public function test_navigation_script_uses_vanilla_js_not_jquery(): void
+    {
+        foreach (['yes', 'no', 'interactive'] as $personalization) {
+            [, $html] = $this->render($personalization, $personalization === 'interactive' ? ['defense_guidelines' => self::GUIDELINES] : []);
+            // jQuery is never loaded: $(...) threw a ReferenceError on every click (upstream bug).
+            $this->assertStringNotContainsString('$(window)', $html);
+            $this->assertStringNotContainsString('$("#next")', $html);
+            $this->assertSame(2, substr_count($html, 'window.scrollTo(0, 0);'));
+            $this->assertStringContainsString('document.getElementById(\'next\').textContent = this.step === num_steps ? "Proceed to last phase" : "Next";', $html);
+        }
+    }
+
     public function test_completed_module_is_flagged_on_reload(): void
     {
         [$user] = $this->render('interactive', ['defense_guidelines' => self::GUIDELINES]);

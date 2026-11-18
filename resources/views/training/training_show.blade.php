@@ -140,9 +140,9 @@
                     }
                     this.setTimer(); // Reset the timer when going back
 
-                    $(window).scrollTop(0);
+                    window.scrollTo(0, 0);
                     if (this.step < num_steps) {
-                        $("#next").text("Next");
+                        document.getElementById('next').textContent = "Next";
                     }
                 },
 
@@ -160,11 +160,11 @@
                     if (this.step < num_steps) {
                         this.step++;
                         this.setTimer(); // Start timer for new section
-                        $("#next").text(this.step === num_steps ? "Proceed to last phase" : "Next");
+                        document.getElementById('next').textContent = this.step === num_steps ? "Proceed to last phase" : "Next";
                     } else if (this.step === num_steps) {
                         this.completeTraining(); // Redirect to controller
                     }
-                    $(window).scrollTop(0);
+                    window.scrollTo(0, 0);
                 },
 
                 setTimer() {
