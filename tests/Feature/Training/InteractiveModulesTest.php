@@ -185,7 +185,9 @@ class InteractiveModulesTest extends TestCase
         $this->assertStringContainsString('Hi Alice, your mailbox password', $section);
         $this->assertStringNotContainsString('alert(1)', $section);
         $this->assertStringNotContainsString('onclick', $section);
-        $this->assertStringContainsString('data-href="https://company-helpdesk.net/reset"', $section);
+        $this->assertStringContainsString('data-href="https://company-helpdesk.net/reset" title="https://company-helpdesk.net/reset"', $section);
+        // Hover/focus shows the real address in a status bar fixed at the bottom of the window, like a mail client.
+        $this->assertMatchesRegularExpression('/<div class="fixed left-0[^"]*"[^>]*x-show="hover" x-text="hover" style="display: none; bottom: 0;/', $section);
         $this->assertStringNotContainsString('href="https://company-helpdesk.net/reset"', str_replace('data-href', '', $section));
 
         // Only the first clue (order 1) is highlighted; its explanation is not on the page yet.

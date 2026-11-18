@@ -2,7 +2,8 @@
     Email as a mail client shows it, shared by the interactive modules (M1 header, M2 annotated email; usable by M4).
     Field props are plain strings (escaped here) or HtmlString already escaped by the caller (e.g. ScenarioEmail with
     highlights). The body is the default slot. Links never navigate: a click is cancelled and hovering/focusing a link
-    shows its real address (data-href, or href for authored content) in the status bar at the bottom.
+    shows its real address (data-href, or href for authored content) in a status bar at the bottom-left of the window;
+    the sanitized body links also carry it as title (native tooltip).
 --}}
 @props([
     'label' => 'Email',
@@ -56,6 +57,8 @@
             @endforeach
         </ul>
     @endif
-    <div class="px-4 py-1 text-xs bg-gray-100 border-t border-gray-200 text-gray-700 font-mono truncate" aria-hidden="true"
-         x-show="hover" x-text="hover" style="display: none"></div>
+    {{-- Status bar fixed at the bottom-left of the window, as browsers and mail clients show a link destination:
+         visible wherever the card is scrolled. Screen readers get the address from the link title. --}}
+    <div class="fixed left-0 z-50 px-3 py-1 text-sm bg-gray-800 text-white font-mono rounded-tr-md truncate shadow" aria-hidden="true"
+         x-show="hover" x-text="hover" style="display: none; bottom: 0; max-width: 90vw"></div>
 </article>

@@ -30,9 +30,11 @@ class ScenarioEmailTest extends TestCase
         $this->assertStringContainsString('<p>Hi <b>&lt;i&gt;Al&amp;ice&lt;/i&gt;</b></p>', $out);
         $this->assertStringContainsString('Text in form', $out);
         $this->assertStringContainsString('kept text', $out);
-        // Links never navigate: real destination from links[] (not the model href), focusable.
-        $this->assertStringContainsString('<a data-link-id="l1" role="link" tabindex="0" data-href="https://evil.example/reset">Keep my password</a>', $out);
-        $this->assertStringContainsString('<a role="link" tabindex="0" data-href="https://plain.example">Other</a>', $out);
+        // Links never navigate: real destination from links[] (not the model href), focusable, shown as a tooltip.
+        $this->assertStringContainsString('<a data-link-id="l1" role="link" tabindex="0" data-href="https://evil.example/reset" title="https://evil.example/reset">Keep my password</a>', $out);
+        $this->assertStringContainsString('<a role="link" tabindex="0" data-href="https://plain.example" title="https://plain.example">Other</a>', $out);
+        // No destination at all: no empty tooltip.
+        $this->assertSame('<a role="link" tabindex="0" data-href="">Nowhere</a>', EmailBodySanitizer::sanitize('<a>Nowhere</a>', [], 'Al'));
         $this->assertStringContainsString('<td colspan="2">cell</td>', $out);
     }
 
@@ -89,7 +91,7 @@ class ScenarioEmailTest extends TestCase
         $this->assertStringNotContainsString('data-clue="3"', (string) $fields['body']);
 
         $fields = $email->render(['c1' => 'opened', 'c2' => 'opened', 'c3' => 'current', 'c5' => 'opened']);
-        $this->assertStringContainsString('<a data-link-id="l1" role="button" tabindex="0" data-href="https://company-helpdesk.net/reset" data-clue="3" data-clue-state="current" data-clue-current="" aria-label="Suspicious element 3: show the explanation">', (string) $fields['body']);
+        $this->assertStringContainsString('<a data-link-id="l1" role="button" tabindex="0" data-href="https://company-helpdesk.net/reset" title="https://company-helpdesk.net/reset" data-clue="3" data-clue-state="current" data-clue-current="" aria-label="Suspicious element 3: show the explanation">', (string) $fields['body']);
         $this->assertSame('invoice<mark data-clue="5" data-clue-state="opened" data-clue-number="5">.pdf.exe</mark>', (string) $fields['attachments'][0]);
     }
 

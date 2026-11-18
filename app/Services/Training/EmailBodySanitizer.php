@@ -14,7 +14,8 @@ use DOMText;
  * - dangerous elements are removed with their content (script, style, iframe, forms controls, media, svg...);
  * - any other tag is unwrapped (its text stays);
  * - links never navigate: <a> loses its href and gets role="link", tabindex="0" and data-href with the real
- *   destination (links[].href_real of the email, or the href written by the model), shown on hover/focus;
+ *   destination (links[].href_real of the email, or the href written by the model), also as title (tooltip), shown
+ *   on hover/focus;
  * - the {{first_name}} placeholder is replaced in text nodes (the DOM escapes the name when serialised).
  */
 final class EmailBodySanitizer
@@ -102,6 +103,9 @@ final class EmailBodySanitizer
             $keep['role'] = 'link';
             $keep['tabindex'] = '0';
             $keep['data-href'] = mb_substr($href, 0, self::MAX_HREF);
+            if ($keep['data-href'] !== '') {
+                $keep['title'] = $keep['data-href'];  // native tooltip on hover, accessible description on focus
+            }
         } elseif ($tag === 'td' || $tag === 'th') {
             foreach (['colspan', 'rowspan'] as $name) {
                 $value = $el->getAttribute($name);
