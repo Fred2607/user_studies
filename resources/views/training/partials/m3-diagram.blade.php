@@ -1,8 +1,8 @@
 {{--
     Module 3, interactive condition: diagram of the scenario email with the defense guidelines (DefenseDiagram).
     $diagram: null (no valid guidelines: nothing shown) | {items, svg: null|geometry}. Every string is escaped.
-    The numbered list is the text alternative: always in the page for screen readers, visible on small screens
-    (where the scaled SVG text is too small) and as the only output when the SVG cannot be drawn.
+    The numbered list is the text alternative: always in the page for screen readers, the only visible output below
+    md (the SVG is hidden there: scaled to the screen its text is too small to read) and when the SVG cannot be drawn.
 --}}
 @if ($diagram !== null)
     <figure class="mt-8 min-w-0 max-w-full text-left" aria-labelledby="m3-diagram-caption">
@@ -10,7 +10,7 @@
             @php($svg = $diagram['svg'])
             <svg viewBox="0 0 {{ $svg['width'] }} {{ $svg['height'] }}" width="100%" preserveAspectRatio="xMidYMin meet"
                  role="img" aria-labelledby="m3-diagram-title" aria-describedby="m3-guidelines"
-                 class="block w-full max-w-3xl h-auto mx-auto" font-family="ui-sans-serif, system-ui, sans-serif">
+                 class="hidden md:block w-full max-w-3xl h-auto mx-auto" font-family="ui-sans-serif, system-ui, sans-serif">
                 <title id="m3-diagram-title">The phishing scenario email with the defense guidelines connected to the parts they refer to</title>
                 {{-- Email thumbnail --}}
                 <rect x="{{ $svg['card']['x'] }}" y="{{ $svg['card']['y'] }}" width="{{ $svg['card']['width'] }}" height="{{ $svg['card']['height'] }}" rx="10" fill="#ffffff" stroke="#9e9e9e"/>

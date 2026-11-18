@@ -333,6 +333,8 @@ class InteractiveModulesTest extends TestCase
         $this->assertStringContainsString('&lt;script&gt;domain&lt;/script&gt;', $section);
         $this->assertStringContainsString('>General</text>', $section);  // g4 email_part "none"
         $this->assertSame(4 * 2, substr_count($section, 'r="10" fill="#1d4ed8"'));  // marker + badge per guideline
+        // Below md the SVG text would be ~6px: only the numbered list is shown; from md the SVG, with the list sr-only.
+        $this->assertStringContainsString('class="hidden md:block w-full', $section);
         $this->assertStringContainsString('<ol id="m3-guidelines" class="mt-4 md:sr-only', $section);
         $this->assertStringContainsString('Recognize a genuine email by its official domain. <span class="text-gray-600">(General)</span>', $section);
         $this->assertStringNotContainsString('<animate', $section);
