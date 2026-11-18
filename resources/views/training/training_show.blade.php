@@ -141,14 +141,21 @@
             }; // Required wait time in Seconds per step
 
             return {
-                step: 0,
 @if ($training->isInteractive())
+                // Interactive condition: after a reload with a started, unfinished tutor chat the page reopens
+                // directly at Module 4 (step 4); otherwise it starts from the description (step 0).
+                step: {{ (int) ($initial_step ?? 0) }},
                 // Interactive condition: Module 4 (step 4) is passed only once the tutor chat is completed
                 // (browser event tutor-completed, or data-tutor-completed="true" after a reload).
                 tutorDone: false,
                 init() {
                     this.tutorDone = document.querySelector('[data-tutor-completed="true"]') !== null;
+                    if (this.step > 0) {
+                        this.setTimer(); // resumed step: its minimum reading time starts now
+                    }
                 },
+@else
+                step: 0,
 @endif
                 canProceed: 1,  // the first step does not have time requirements
                 showModal: false, // Controls modal visibility

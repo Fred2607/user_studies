@@ -97,6 +97,41 @@ class InteractiveTrainingPageTest extends TestCase
         }
     }
 
+    public function test_reload_reopens_module_4_only_when_the_tutor_chat_is_started_and_unfinished(): void
+    {
+        [$user, $html] = $this->render('interactive', ['defense_guidelines' => self::GUIDELINES]);
+        // First view: the chat mounts and creates the session, but nothing was written yet.
+        $this->assertStringContainsString('step: 0,', $html);
+        $show = fn () => app(TrainingController::class)->showTraining()->render();
+        $this->assertStringContainsString('step: 0,', $show());
+
+        // A message was sent (dialog state saved): reload opens Module 4.
+        $initialStep = fn () => app(TrainingController::class)->showTraining()->getData()['initial_step'];
+        $session = TutorSession::where('user_id', $user->id)->sole();
+        $this->assertSame([], $session->state['history']);
+        $session->update(['state' => ['history' => [['author' => 'user', 'text' => 'The sender looks odd']]] + $session->state]);
+        $this->assertSame(4, $initialStep());
+
+        // Between two emails (state reset, position advanced) it still resumes at Module 4, whose timer restarts.
+        $session->update(['state' => null, 'position' => 2]);
+        $html = $show();
+        $this->assertStringContainsString('step: 4,', $html);
+        $this->assertStringContainsString('if (this.step > 0) {', $html);
+        $this->assertStringContainsString('Exercise 2 of', $html);
+
+        // Completed: back to the normal start.
+        $session->update(['completed_at' => now()]);
+        $this->assertSame(0, $initialStep());
+    }
+
+    public function test_paper_conditions_always_start_at_step_0(): void
+    {
+        foreach (['yes', 'no'] as $personalization) {
+            [$user] = $this->render($personalization);
+            $this->assertSame(0, app(TrainingController::class)->showTraining()->getData()['initial_step']);
+        }
+    }
+
     public function test_completed_module_is_flagged_on_reload(): void
     {
         [$user] = $this->render('interactive', ['defense_guidelines' => self::GUIDELINES]);

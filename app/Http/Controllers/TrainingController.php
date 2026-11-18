@@ -49,7 +49,32 @@ class TrainingController extends Controller
         }
 
         $training = $this->addCSS($training);
-        return view('training.training_show', ["training" => $training, "wait_times" => $wait_times]);
+        return view('training.training_show', [
+            "training" => $training,
+            "wait_times" => $wait_times,
+            "initial_step" => $this->initialStep($training),
+        ]);
+    }
+
+
+    /**
+     * Step the training page opens at. Interactive condition only: a reload during Module 4 (tutor chat started
+     * and not finished) reopens the page at Module 4 (step 4) instead of the description. The tutor session row is
+     * created (with an empty dialog state) when the chat mounts, on every page view, so "started" means at least one
+     * turn in the dialog history or an email already closed (position > 1). Paper conditions always start at step 0.
+     */
+    private function initialStep(Training $training): int
+    {
+        if (! $training->isInteractive()) {
+            return 0;
+        }
+        $session = TutorSession::query()
+            ->where('user_id', $training->user_id)
+            ->where('training_id', $training->id)
+            ->first();
+        $started = $session !== null && ($session->position > 1 || ! empty($session->state['history'] ?? []));
+
+        return $started && ! $session->isCompleted() ? 4 : 0;
     }
 
 
