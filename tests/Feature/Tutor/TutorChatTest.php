@@ -127,7 +127,11 @@ class TutorChatTest extends TestCase
         $this->assertTrue($response->response_json['closed']);
 
         // Next email: position 2, fresh dialog, classification reset.
-        $c->call('nextEmail')->assertSee('Exercise 2 of 4')->assertSet('choice', '');
+        // Focus moves to the new heading (browser event) and the status region announces it.
+        $c->call('nextEmail')->assertSee('Exercise 2 of 4')->assertSet('choice', '')
+            ->assertDispatchedBrowserEvent('tutor-email-changed')
+            ->assertSeeHtml('<h3 id="tutor-exercise-heading" x-ref="heading" tabindex="-1"')
+            ->assertSeeHtml('<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">Exercise 2 of 4</p>');
         $this->assertSame(2, TutorSession::where('user_id', $user->id)->value('position'));
     }
 

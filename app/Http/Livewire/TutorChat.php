@@ -91,6 +91,8 @@ class TutorChat extends Component
         if ($this->conversation()->advance()) {
             $this->choice = '';
             $this->message = '';
+            // The view moves focus to the new "Exercise N of M" heading (accessibility, keyboard/screen reader).
+            $this->dispatchBrowserEvent('tutor-email-changed');
         }
     }
 

@@ -1,9 +1,12 @@
 {{-- Module 4 tutor chat. Receives only the browser-safe projection of the email while its dialog is open. --}}
-<div class="tutor-chat w-full min-w-0 max-w-full md:max-w-3xl mx-auto text-left text-base md:text-xl" data-tutor-completed="{{ $completed ? 'true' : 'false' }}">
+<div class="tutor-chat w-full min-w-0 max-w-full md:max-w-3xl mx-auto text-left text-base md:text-xl" data-tutor-completed="{{ $completed ? 'true' : 'false' }}"
+     x-data x-on:tutor-email-changed.window="setTimeout(() => $refs.heading?.focus(), 0)">
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-4">
-        <h3 class="text-xl font-bold">Exercise {{ $position }} of {{ $total }}</h3>
+        {{-- After "Next email" focus moves here (tabindex=-1) and the status below announces the new exercise. --}}
+        <h3 id="tutor-exercise-heading" x-ref="heading" tabindex="-1" class="text-xl font-bold focus:outline-none">Exercise {{ $position }} of {{ $total }}</h3>
         <span class="text-sm text-gray-600">Is this email phishing or legitimate? Explain why.</span>
     </div>
+    <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">Exercise {{ $position }} of {{ $total }}</p>
 
     @if (! empty($email['context']))
         <p class="mb-3 text-base text-gray-700 italic">{{ $email['context'] }}</p>
