@@ -62,6 +62,29 @@ class InteractiveTrainingPageTest extends TestCase
         $this->assertStringContainsString('document.querySelector(\'[data-tutor-completed="true"]\')', $html);
     }
 
+    public function test_interactive_page_is_responsive_and_paper_markup_is_unchanged(): void
+    {
+        [, $html] = $this->render('interactive', ['defense_guidelines' => self::GUIDELINES]);
+        $this->assertStringContainsString('<div class="p-4 md:p-12 m-2 md:m-10 min-w-0 max-w-full bg-white md:min-w-100 rounded-2xl shadow-xl z-20">', $html);
+        $this->assertStringContainsString('<div class="text-xl text-left md:text-justify">', $html);
+        $this->assertStringNotContainsString('<div class="text-xl text-justify">', $html);
+        $this->assertStringContainsString('<div class="mt-8 min-w-0 max-w-full">', $html); // chat spaced from the intro
+        $this->assertStringContainsString('[&_table]:w-full', $html); // email body tables fit the card
+        $this->assertStringContainsString('class="py-3 w-full md:w-64 text-lg text-black', $html); // nav buttons fit 390px
+
+        foreach (['yes', 'no'] as $personalization) {
+            [, $html] = $this->render($personalization);
+            $this->assertStringContainsString('<div class="p-12 m-10 bg-white md:min-w-100 rounded-2xl shadow-xl z-20">', $html);
+            $this->assertSame(5, substr_count($html, '<div class="text-xl text-justify">'));
+            $this->assertStringContainsString('class="py-3 w-64 text-lg text-black bg-gray-300 hover:bg-gray-400 rounded-2xl"', $html);
+            $this->assertStringContainsString(':class="{\'w-full\' : step === 0, \'w-64\' : step > 0}"', $html);
+            foreach (['p-4 md:p-12', 'm-2 md:m-10', 'min-w-0', 'text-left md:text-justify', 'mt-8 min-w-0', 'tutor-exercise-heading', 'md:w-64', 'space-x-3'] as $interactiveOnly) {
+                $this->assertStringNotContainsString($interactiveOnly, $html);
+            }
+            $this->assertStringContainsString("            return {\n                step: 0,\n                canProceed: 1,", $html);
+        }
+    }
+
     public function test_navigation_script_uses_vanilla_js_not_jquery(): void
     {
         foreach (['yes', 'no', 'interactive'] as $personalization) {

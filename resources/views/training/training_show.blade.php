@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="slot">
         <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
-            <div class="p-12 m-10 bg-white md:min-w-100 rounded-2xl shadow-xl z-20">
+            <div class="{{ $training->isInteractive() ? 'p-4 md:p-12 m-2 md:m-10 min-w-0 max-w-full' : 'p-12 m-10' }} bg-white md:min-w-100 rounded-2xl shadow-xl z-20">
                 <h1 class="text-3xl font-bold text-center mb-5">Anti-phishing Training</h1>
                 @if (session('error'))
                     <div role="alert" class="mb-5 rounded-lg bg-red-100 px-4 py-3 text-red-800">{{ session('error') }}</div>
@@ -23,14 +23,14 @@
 
                 <div x-show="step === 1" id="section-intro">
                     <div class="text-2xl font-bold text-center mb-6"> -- Introduction -- </div>
-                    <div class="text-xl text-justify">
+                    <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
                         {!! $training->renderSection('introduction') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 1 of 5</h2>
                 </div>
 
                 <div x-show="step === 2" id="section-scenario">
-                    <div class="text-xl text-justify">
+                    <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
                     <div class="text-2xl font-bold text-center mb-6"> -- Phishing Scenario -- </div>
                         {!! $training->renderSection('scenario') !!}
                     </div>
@@ -40,7 +40,7 @@
                 <div x-show="step === 3" id="section-strategies">
 
                     <div class="text-2xl font-bold text-center mb-6"> -- Defense Strategies -- </div>
-                    <div class="text-xl text-justify">
+                    <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
                         {!! $training->renderSection('defense_strategies') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 3 of 5</h2>
@@ -48,7 +48,7 @@
 
                 <div x-show="step === 4" id="section-exercises">
                     <div class="text-2xl font-bold text-center mb-6"> -- Exercises -- </div>
-                    <div class="text-xl text-justify">
+                    <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
                         {!! $training->renderSection('exercises') !!}
                         @if ($training->isInteractive())
                             {{-- Module 4 of the interactive condition: emails from the bank + tutor (partial owned by the tutor lot). --}}
@@ -60,7 +60,7 @@
 
                 <div x-show="step === 5" id="section-conclusions">
                     <div class="text-2xl font-bold text-center mb-6"> -- Conclusion -- </div>
-                    <div class="text-xl text-justify">
+                    <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
                         {!! $training->renderSection('conclusions') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 5 of 5</h2>
@@ -79,6 +79,24 @@
                 </div>
 
                 <div class="text-center mt-4 ">
+@if ($training->isInteractive())
+                    {{-- Interactive condition: same buttons, sized to fit narrow screens (no horizontal scroll at 390px). --}}
+                    <div x-show="step !== 6" class="flex flex-row w-full" :class="{'space-x-3 md:space-x-6' : step > 0}">
+                        <div x-show="step > 1" class="flex-1 md:flex-none">
+                            <button type="button" id="back" @click="previous()"
+                                    class="py-3 w-full md:w-64 text-lg text-black bg-gray-300 hover:bg-gray-400 rounded-2xl">
+                                Previous
+                            </button>
+                        </div>
+                        <div x-show="step >= 0" class="hidden md:block md:flex-1"></div>
+                        <div :class="step === 0 ? 'flex-1 w-full' : 'flex-1 md:flex-none'">
+                            <button type="button" id="next" :disabled="step === 4 && !tutorDone" :title="step === 4 && !tutorDone ? 'Complete the exercises with the tutor first' : ''" :style="step === 4 && !tutorDone ? 'opacity: 0.5; cursor: not-allowed' : ''" @click="next()"
+                                    :class="{'w-full' : step === 0, 'w-full md:w-64' : step > 0}"
+                                    class="py-3 px-3 text-lg text-white bg-blue-500 hover:bg-blue-800 rounded-2xl">Next
+                            </button>
+                        </div>
+                    </div>
+@else
                     <div x-show="step !== 6" class="flex flex-row w-full" :class="{'space-x-6' : step > 0}">
                         <div x-show="step > 1">
                             <button type="button" id="back" @click="previous()"
@@ -88,12 +106,13 @@
                         </div>
                         <div x-show="step >= 0" class="flex-1"></div>
                         <div :class="{'flex-1 w-full': step === 0}">
-                            <button type="button" id="next"@if ($training->isInteractive()) :disabled="step === 4 && !tutorDone" :title="step === 4 && !tutorDone ? 'Complete the exercises with the tutor first' : ''" :style="step === 4 && !tutorDone ? 'opacity: 0.5; cursor: not-allowed' : ''"@endif @click="next()"
+                            <button type="button" id="next" @click="next()"
                                     :class="{'w-full' : step === 0, 'w-64' : step > 0}"
                                     class="py-3 text-lg text-white bg-blue-500 hover:bg-blue-800 rounded-2xl">Next
                             </button>
                         </div>
                     </div>
+@endif
                 </div>
 
                 <!-- Modal -->

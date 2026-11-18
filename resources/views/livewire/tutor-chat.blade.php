@@ -1,6 +1,6 @@
 {{-- Module 4 tutor chat. Receives only the browser-safe projection of the email while its dialog is open. --}}
-<div class="tutor-chat w-full max-w-3xl mx-auto text-left" data-tutor-completed="{{ $completed ? 'true' : 'false' }}">
-    <div class="flex items-center justify-between mb-4">
+<div class="tutor-chat w-full min-w-0 max-w-full md:max-w-3xl mx-auto text-left text-base md:text-xl" data-tutor-completed="{{ $completed ? 'true' : 'false' }}">
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-4">
         <h3 class="text-xl font-bold">Exercise {{ $position }} of {{ $total }}</h3>
         <span class="text-sm text-gray-600">Is this email phishing or legitimate? Explain why.</span>
     </div>
@@ -10,13 +10,13 @@
     @endif
 
     {{-- The email, as a mail client would show it. Links are not followed; hovering/focusing shows the real address. --}}
-    <article aria-label="Email to analyse" class="border border-gray-300 rounded-xl overflow-hidden mb-6 bg-white"
+    <article aria-label="Email to analyse" class="min-w-0 max-w-full border border-gray-300 rounded-xl overflow-hidden mb-6 bg-white"
              x-data="{ hover: null }"
              x-on:click="if ($event.target.closest('a')) { $event.preventDefault() }"
              x-on:mouseover="hover = $event.target.closest('a')?.getAttribute('href') ?? null"
              x-on:focusin="hover = $event.target.closest('a')?.getAttribute('href') ?? null"
              x-on:mouseout="hover = null">
-        <dl class="bg-gray-50 border-b border-gray-200 px-4 py-3 text-sm grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1">
+        <dl class="bg-gray-50 border-b border-gray-200 px-3 md:px-4 py-3 text-sm grid grid-cols-[4.5rem_minmax(0,1fr)] md:grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1 break-words [overflow-wrap:anywhere]">
             <dt class="text-gray-500">From</dt>
             <dd><span class="font-semibold">{{ $email['sender_name'] ?? '' }}</span> &lt;{{ $email['sender_address'] ?? '' }}&gt;</dd>
             @if (! empty($email['reply_to']))
@@ -32,14 +32,14 @@
             <dt class="text-gray-500">Subject</dt>
             <dd class="font-semibold">{{ $email['subject'] ?? '' }}</dd>
         </dl>
-        <div class="px-4 py-4 overflow-x-auto">
+        <div class="min-w-0 max-w-full px-3 md:px-4 py-4 overflow-x-auto break-words [overflow-wrap:anywhere] [&_table]:w-full [&_table]:max-w-full [&_img]:max-w-full [&_img]:h-auto">
             {{-- Authored bank content (resources/tutor/emails-m4.json), not user input. --}}
             {!! $email['body_html'] ?? '' !!}
         </div>
         @if (! empty($email['attachments']))
-            <ul class="px-4 pb-3 text-sm flex flex-wrap gap-2" aria-label="Attachments">
+            <ul class="px-3 md:px-4 pb-3 text-sm flex flex-wrap gap-2 break-words [overflow-wrap:anywhere]" aria-label="Attachments">
                 @foreach ($email['attachments'] as $attachment)
-                    <li class="border border-gray-300 rounded px-2 py-1 bg-gray-50">
+                    <li class="max-w-full border border-gray-300 rounded px-2 py-1 bg-gray-50">
                         &#128206; {{ is_array($attachment) ? ($attachment['filename'] ?? '') : $attachment }}
                         @if (is_array($attachment) && isset($attachment['size_kb']))
                             <span class="text-gray-500">({{ $attachment['size_kb'] }} KB)</span>
@@ -58,7 +58,7 @@
             @foreach ($transcript as $turn)
                 @if ($turn['author'] === 'user')
                     <li class="flex justify-end">
-                        <div class="max-w-[80%] rounded-2xl rounded-br-sm bg-blue-600 text-white px-4 py-2">
+                        <div class="min-w-0 max-w-[85%] md:max-w-[80%] break-words [overflow-wrap:anywhere] rounded-2xl rounded-br-sm bg-blue-600 text-white px-4 py-2">
                             <span class="sr-only">You:</span>
                             @if ($turn['classification'])
                                 <span class="block text-xs uppercase tracking-wide opacity-80">{{ $turn['classification'] === 'phishing' ? 'Phishing' : 'Legitimate' }}</span>
@@ -68,7 +68,7 @@
                     </li>
                 @else
                     <li class="flex justify-start">
-                        <div class="max-w-[80%] rounded-2xl rounded-bl-sm bg-gray-100 text-gray-900 px-4 py-2">
+                        <div class="min-w-0 max-w-[85%] md:max-w-[80%] break-words [overflow-wrap:anywhere] rounded-2xl rounded-bl-sm bg-gray-100 text-gray-900 px-4 py-2">
                             <span class="block text-xs font-semibold text-gray-500">Tutor</span>
                             {!! nl2br(e($turn['text'])) !!}
                         </div>
@@ -80,7 +80,7 @@
 
     @if ($closing)
         {{-- Closing: verdict from the card, tutor feedback, annotated clues (shown only after the dialog is closed). --}}
-        <section aria-label="Solution of this email" aria-live="polite" class="border-2 rounded-xl p-4 mb-4 {{ $closing['verdict'] === 'Phishing' ? 'border-red-300 bg-red-50' : 'border-green-300 bg-green-50' }}">
+        <section aria-label="Solution of this email" aria-live="polite" class="border-2 rounded-xl p-3 md:p-4 mb-4 break-words [overflow-wrap:anywhere] {{ $closing['verdict'] === 'Phishing' ? 'border-red-300 bg-red-50' : 'border-green-300 bg-green-50' }}">
             <p class="text-lg font-bold mb-1">This email is {{ $closing['verdict'] === 'Phishing' ? 'a phishing email' : 'legitimate' }}.</p>
             <p class="mb-3 text-sm">{{ $closing['correct'] ? 'Your final answer was correct.' : 'Your final answer was not correct.' }}</p>
             <div class="mb-4 rounded-lg bg-white px-4 py-2">
@@ -126,7 +126,7 @@
         <form wire:submit.prevent="send" class="space-y-3" aria-label="Your answer">
             <fieldset>
                 <legend class="font-semibold mb-1">Your classification</legend>
-                <div class="flex gap-4">
+                <div class="flex flex-wrap gap-x-4 gap-y-2">
                     <label class="inline-flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="tutor-choice" value="phishing" wire:model="choice" class="text-blue-600">
                         <span>Phishing</span>
