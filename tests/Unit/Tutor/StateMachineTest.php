@@ -201,6 +201,18 @@ class StateMachineTest extends TutorTestCase
         $this->assertSame(0, $client->remaining());
     }
 
+    /** Real-API run 18-11: after the user named the sender domain, the fallback pointed back at the sender. */
+    public function test_fallback_skips_hints_about_a_zone_the_user_already_recognized(): void
+    {
+        $icloud = self::card('m4-p1-icloud'); // position 1 = high help: sender, hover, request hints
+        $s = self::session($icloud, 1);
+        $e = self::engine([self::q($icloud, 'Good. What else do you notice?', ['c1']), 'x', 'x']);
+        $s->step($e, 'The sender is icloud-storage-alerts.com, not apple.com at all', 'phishing');
+        $this->assertContains('c1', $s->recognized);
+        $out = $s->step($e, 'The button probably goes to another site', 'phishing');
+        $this->assertSame([$icloud['fallback_hints']['high'][1]], $out->shown);
+    }
+
     public function test_after_dont_know_the_fallback_uses_the_hints_of_the_level_above_once(): void
     {
         $airbnb = self::card('m4-p2-airbnb');

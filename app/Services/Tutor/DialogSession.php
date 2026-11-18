@@ -398,19 +398,40 @@ class DialogSession
     {
         $level = $this->lastDontKnowHeuristic ? self::raiseLevel($this->helpLevel) : $this->helpLevel;
         $hints = array_values($this->card['fallback_hints'][$level->value] ?? []);
-        $hint = null;
-        foreach ($hints as $h) {
-            if (! in_array($h, $this->usedHints, true)) {
-                $hint = $h;
-                break;
-            }
-        }
-        $hint ??= $hints[count($hints) - 1] ?? 'What are you basing your decision on?';
+        $unused = array_values(array_filter($hints, fn (string $h) => ! in_array($h, $this->usedHints, true)));
+        // Prefer a hint that does not point back at a zone the user already recognized (it would repeat them).
+        $fresh = array_values(array_filter($unused, fn (string $h) => ! $this->hintPointsOnlyToRecognizedZones($h)));
+        $hint = $fresh[0] ?? $unused[0] ?? $hints[count($hints) - 1] ?? 'What are you basing your decision on?';
         if (! in_array($hint, $this->usedHints, true)) {
             $this->usedHints[] = $hint;
         }
 
         return $this->baseOutput($hint);
+    }
+
+    /** Card fields of each zone family of Validator::ZONE_FAMILIES (the generic "link" family is not a zone hint here). */
+    private const ZONE_FIELDS = ['sender' => ['sender_address'], 'reply_to' => ['reply_to'], 'hover' => ['link'], 'attachment' => ['attachment']];
+
+    /** True when every zone the hint points to belongs to an item the user already recognized. */
+    private function hintPointsOnlyToRecognizedZones(string $hint): bool
+    {
+        $recognizedFields = [];
+        foreach (Materials::cardItems($this->card) as $item) {
+            if (in_array($item['id'], $this->recognized, true)) {
+                $recognizedFields[] = $item['target']['field'] ?? null;
+            }
+        }
+        $zones = array_keys(array_filter(self::ZONE_FIELDS, fn (array $_, string $family) => JsRegex::test(Validator::ZONE_FAMILIES[$family], $hint), ARRAY_FILTER_USE_BOTH));
+        if ($zones === []) {
+            return false;
+        }
+        foreach ($zones as $family) {
+            if (array_intersect(self::ZONE_FIELDS[$family], $recognizedFields) === []) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** Deterministic closing fallback: the card's static feedback (cap4 4.4.5). */
