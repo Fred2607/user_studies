@@ -135,6 +135,37 @@ class TutorChatTest extends TestCase
         $this->assertSame(2, TutorSession::where('user_id', $user->id)->value('position'));
     }
 
+    public function test_long_missed_list_shows_four_items_and_hides_the_rest_behind_a_disclosure(): void
+    {
+        $this->actingAs($this->participant());
+        $this->fake($this->closingScript());
+
+        $c = Livewire::test(TutorChat::class);
+        $this->send($c, 'phishing', 'The sender address is not from Apple at all');
+        $this->send($c, 'phishing', 'The button wants my Apple ID password and card details')
+            ->assertSee('What you missed')
+            ->assertSeeHtml('<summary')
+            ->assertSee('Show 10 more signals you missed');
+
+        $html = $c->lastRenderedDom;
+        $before = substr($html, strpos($html, 'What you missed'), strpos($html, '<summary') - strpos($html, 'What you missed'));
+        $this->assertSame(4, substr_count($before, '<li '));
+        $this->assertSame(14, substr_count(substr($html, strpos($html, 'What you missed')), '<li '));
+    }
+
+    public function test_missed_items_put_main_signals_first_keeping_card_order(): void
+    {
+        $items = [
+            ['label' => 'a', 'main' => false], ['label' => 'b', 'main' => true],
+            ['label' => 'c', 'main' => false], ['label' => 'd', 'main' => true],
+            ['label' => 'e', 'main' => false], ['label' => 'f', 'main' => false],
+        ];
+        $split = TutorChat::missedPreview($items);
+        $this->assertSame(['b', 'd', 'a', 'c'], array_column($split['shown'], 'label'));
+        $this->assertSame(['e', 'f'], array_column($split['more'], 'label'));
+        $this->assertSame([], TutorChat::missedPreview(array_slice($items, 0, 3))['more']);
+    }
+
     public function test_recognized_ids_claimed_by_the_model_need_support_in_the_user_messages(): void
     {
         $this->actingAs($user = $this->participant());

@@ -90,21 +90,31 @@
                 <span class="block text-xs font-semibold text-gray-500">Tutor</span>
                 {!! nl2br(e($closing['message'])) !!}
             </div>
-            @foreach (['found' => 'What you noticed', 'missed' => 'What you missed'] as $group => $title)
-                @if (! empty($closing[$group]))
-                    <h4 class="font-semibold mt-2 mb-1">{{ $title }}</h4>
+            @php
+                $groups = [
+                    'found' => ['title' => 'What you noticed', 'shown' => $closing['found'], 'more' => []],
+                    'missed' => ['title' => 'What you missed', 'shown' => $closing['missed']['shown'], 'more' => $closing['missed']['more']],
+                ];
+            @endphp
+            @foreach ($groups as $group => $g)
+                @if (! empty($g['shown']))
+                    <h4 class="font-semibold mt-2 mb-1">{{ $g['title'] }}</h4>
                     <ul class="space-y-2 mb-2">
-                        @foreach ($closing[$group] as $item)
-                            <li class="rounded-lg bg-white px-3 py-2 text-sm">
-                                <span aria-hidden="true">{{ $group === 'found' ? '✓' : '•' }}</span>
-                                <span class="font-semibold">{{ $item['label'] }}</span>
-                                @if ($item['field'])
-                                    <span class="text-gray-500">— {{ $fieldLabels[$item['field']] ?? $item['field'] }}@if ($item['text']): <mark class="bg-yellow-200">{{ $item['text'] }}</mark>@endif</span>
-                                @endif
-                                <p class="text-gray-700 mt-1">{{ $item['explanation'] }}</p>
-                            </li>
+                        @foreach ($g['shown'] as $item)
+                            @include('livewire.partials.tutor-closing-item', ['item' => $item, 'group' => $group])
                         @endforeach
                     </ul>
+                    @if (! empty($g['more']))
+                        {{-- Main signals come first; the long tail stays one click away (cap4: avoid overload at closing). --}}
+                        <details class="mb-2">
+                            <summary class="cursor-pointer text-sm font-semibold text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-400 rounded">Show {{ count($g['more']) }} more {{ count($g['more']) === 1 ? 'signal' : 'signals' }} you missed</summary>
+                            <ul class="space-y-2 mt-2">
+                                @foreach ($g['more'] as $item)
+                                    @include('livewire.partials.tutor-closing-item', ['item' => $item, 'group' => $group])
+                                @endforeach
+                            </ul>
+                        </details>
+                    @endif
                 @endif
             @endforeach
 

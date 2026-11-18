@@ -96,6 +96,28 @@ class TutorChat extends Component
         }
     }
 
+    /** Missed signals shown before "Show all": a long list (up to 14 on one email) buries the main ones. */
+    public const MISSED_VISIBLE = 4;
+
+    /**
+     * Splits the missed items for the closing view: main signals first (card order kept within each group),
+     * the first MISSED_VISIBLE shown, the rest behind a "Show all" disclosure.
+     *
+     * @param list<array<string, mixed>> $items
+     * @return array{shown: list<array<string, mixed>>, more: list<array<string, mixed>>}
+     */
+    public static function missedPreview(array $items): array
+    {
+        $main = array_values(array_filter($items, fn (array $i) => ! empty($i['main'])));
+        $other = array_values(array_filter($items, fn (array $i) => empty($i['main'])));
+        $ordered = array_merge($main, $other);
+
+        return [
+            'shown' => array_slice($ordered, 0, self::MISSED_VISIBLE),
+            'more' => array_slice($ordered, self::MISSED_VISIBLE),
+        ];
+    }
+
     public function render()
     {
         $conversation = $this->conversation();
@@ -120,7 +142,7 @@ class TutorChat extends Component
                 'correct' => $dialog->classification === $view->verdict,
                 'message' => $view->message,
                 'found' => $annotate($view->found),
-                'missed' => $annotate($view->missed),
+                'missed' => self::missedPreview($annotate($view->missed)),
             ];
         }
 
