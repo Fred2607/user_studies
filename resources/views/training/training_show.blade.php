@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="slot">
-        <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true" x-on:m1-completed.window="m1Done = true" x-on:m2-completed.window="m2Done = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
+        <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true" x-on:m1-completed.window="m1Done = true" x-on:m2-completed.window="m2Done = true" x-on:rules-completed.window="rulesDone = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
             <div class="{{ $training->isInteractive() ? 'p-4 md:p-12 m-2 md:m-10 min-w-0 max-w-full' : 'p-12 m-10' }} bg-white md:min-w-100 rounded-2xl shadow-xl z-20">
                 <h1 class="text-3xl font-bold text-center mb-5">Anti-phishing Training</h1>
                 @if (session('error'))
@@ -74,7 +74,7 @@
                 <div x-show="step === 5" id="section-conclusions">
                     <div class="text-2xl font-bold text-center mb-6"> -- Conclusion -- </div>
                     <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
-                        {!! $training->renderSection('conclusions') !!}
+                        {!! $training->isInteractive() ? view('training.partials.m5-interactive', ['training' => $training])->render() : $training->renderSection('conclusions') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 5 of 5</h2>
                 </div>
@@ -165,21 +165,26 @@
                 // data-m1/m2-completed="true" after a reload); without the activity (no valid data) they are not gated.
                 m1Done: true,
                 m2Done: true,
+                // Module 5 (step 5): "Proceed" only once the revised personal rules are saved (browser event
+                // rules-completed, or data-rules-completed="true" after a reload).
+                rulesDone: false,
                 init() {
                     this.tutorDone = document.querySelector('[data-tutor-completed="true"]') !== null;
                     this.m1Done = document.querySelector('[data-m1-completed="false"]') === null;
                     this.m2Done = document.querySelector('[data-m2-completed="false"]') === null;
+                    this.rulesDone = document.querySelector('[data-rules-completed="true"]') !== null;
                     if (this.step > 0) {
                         this.setTimer(); // resumed step: its minimum reading time starts now
                     }
                 },
                 locked() {
-                    return (this.step === 1 && !this.m1Done) || (this.step === 2 && !this.m2Done) || (this.step === 4 && !this.tutorDone);
+                    return (this.step === 1 && !this.m1Done) || (this.step === 2 && !this.m2Done) || (this.step === 4 && !this.tutorDone) || (this.step === 5 && !this.rulesDone);
                 },
                 lockMessage() {
                     if (this.step === 1 && !this.m1Done) return 'Answer the question first';
                     if (this.step === 2 && !this.m2Done) return 'Open all the suspicious elements and answer the question first';
                     if (this.step === 4 && !this.tutorDone) return 'Complete the exercises with the tutor first';
+                    if (this.step === 5 && !this.rulesDone) return 'Write and save your personal rules first';
                     return '';
                 },
 @else
@@ -204,7 +209,7 @@
                     console.log(this.step, this.canProceed)
 @if ($training->isInteractive())
                     if (this.locked()) {
-                        return; // Module 1, 2 or 4 not completed yet: Next stays disabled
+                        return; // Module 1, 2, 4 or 5 not completed yet: Next stays disabled
                     }
 @endif
                     if (this.step >= this.canProceed) {

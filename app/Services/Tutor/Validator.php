@@ -251,6 +251,18 @@ final class Validator
         return $v;
     }
 
+    /**
+     * JSON Schema errors of already-decoded data (empty list = valid). Reused by RulesCommentValidator (Module 5).
+     *
+     * @return list<string>
+     */
+    public static function schemaErrors(mixed $data, array $schema): array
+    {
+        $result = self::schemaValidator()->validate($data, self::compile($schema));
+
+        return $result->isValid() ? [] : array_values((new ErrorFormatter())->formatFlat($result->error()));
+    }
+
     /** Full validation of a raw model reply. */
     public static function validateTutorReply(string $raw, array $schema, ValidationContext $ctx): ValidationResult
     {
