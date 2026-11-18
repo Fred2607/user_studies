@@ -93,6 +93,11 @@ class DefenseDiagramTest extends TestCase
 
         $this->assertSame(['Sender', 'Tone', 'Request', 'Link', 'General'], array_column($diagram['items'], 'part_label'));
         self::assertConnectorsDoNotCross($diagram['svg']['items']);
+
+        // Tone: the line with the strongest urgency ("within 12 hours"), not the first line mentioning "today".
+        $svg = $diagram['svg'];
+        $rowY = fn (string $prefix) => collect($svg['rows'])->first(fn ($r) => str_starts_with($r['text'], $prefix))['y'];
+        $this->assertSame($rowY('If the fee is not paid within') - 4, $svg['items'][1]['marker']['y']);
     }
 
     /** Circles on the email in number order are top to bottom, as the texts, and no two connectors intersect. */

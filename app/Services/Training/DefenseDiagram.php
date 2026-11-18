@@ -116,7 +116,7 @@ final class DefenseDiagram
             $y += 20;
         }
         if ($bodyY !== []) {
-            $zones['tone'] = $bodyY[self::matchLine($body, self::TONE, false) ?? 0];
+            $zones['tone'] = $bodyY[self::strongestLine($body, self::TONE) ?? 0];
             $zones['request'] = $bodyY[self::matchLine($body, self::REQUEST, true) ?? count($bodyY) - 1];
         }
         if (! empty($email['links'])) {
@@ -218,6 +218,25 @@ final class DefenseDiagram
         }
 
         return $found;
+    }
+
+    /**
+     * Index of the line with the most matches of $pattern (ties: the first), or null without matches. Used for the
+     * tone zone: a deadline ("within 12 hours") outweighs a passing "today" in an earlier line.
+     */
+    private static function strongestLine(array $lines, string $pattern): ?int
+    {
+        $best = null;
+        $bestCount = 0;
+        foreach ($lines as $i => $line) {
+            $count = preg_match_all($pattern, $line);
+            if ($count > $bestCount) {
+                $best = $i;
+                $bestCount = $count;
+            }
+        }
+
+        return $best;
     }
 
     private static function cut(string $text, int $max): string
