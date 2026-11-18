@@ -26,4 +26,9 @@ return [
 
     // Per-user lock while a reply is being processed (s): covers 2 turns x 2 attempts x timeout.
     'lock_seconds' => (int) env('TUTOR_LOCK_SECONDS', 120),
+
+    // Module 5 personal rules (PersonalRules, prompt 5b): total characters of the 2-3 rules, and submissions per
+    // user per minute (the comment itself is one call per user at most, whatever the limit).
+    'rules_max_chars' => (int) env('TUTOR_RULES_MAX_CHARS', 1000),
+    'rules_rate_limit_per_minute' => (int) env('TUTOR_RULES_RATE_LIMIT_PER_MINUTE', 6),
 ];

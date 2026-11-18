@@ -43,3 +43,12 @@ $draw = DialogSession::drawSequence($bank['_meta']); // ['seed', 'sequence', 'le
 ```
 
 Harness: `php artisan tutor:harness --provider=fake` (no network) writes `storage/app/tutor-reports/harness-<provider>-<timestamp>.md`; `--provider=llm --runs=3` uses the container LlmClient (real calls, real cost).
+
+## Module 5: comment on the personal rules (prompt 5b)
+
+`PersonalRules` (Livewire `PersonalRulesForm`): the user writes 2-3 rules "When ..., I ..." (`training_responses`
+module 5 `rules_v1`), the tutor writes ONE comment (`RulesCommentPrompt` fills the verbatim template
+`resources/tutor/rules-comment-prompt.md`; `RulesCommentValidator`; one retry, then skipped), logged in
+`rules_comments`; then ONE revision (`rules_v2`, may be unchanged) shows the `thanks` part of the conclusions and
+unlocks `TrainingController::completeTraining`. `{{missed_clues}}` = main items not in the server-accepted
+`recognized` of each closed email (`tutor_sessions.closed_states`), ids `"<email id>:<item id>"`.

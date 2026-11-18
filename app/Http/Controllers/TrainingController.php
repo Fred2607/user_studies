@@ -6,6 +6,7 @@ use App\Jobs\ProcessTraining;
 use App\Models\Training;
 use App\Models\TutorSession;
 use App\Models\User;
+use App\Services\Tutor\PersonalRules;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Http\Request;
@@ -61,7 +62,8 @@ class TrainingController extends Controller
      * Step the training page opens at. Interactive condition only: a reload during Module 4 (tutor chat started
      * and not finished) reopens the page at Module 4 (step 4) instead of the description. The tutor session row is
      * created (with an empty dialog state) when the chat mounts, on every page view, so "started" means at least one
-     * turn in the dialog history or an email already closed (position > 1). Paper conditions always start at step 0.
+     * turn in the dialog history or an email already closed (position > 1). Once Module 4 is completed and the Module 5
+     * personal rules were sent (rules_v1), it reopens at the conclusions (step 5). Paper conditions always start at step 0.
      */
     private function initialStep(Training $training): int
     {
@@ -73,6 +75,9 @@ class TrainingController extends Controller
             ->where('training_id', $training->id)
             ->first();
         $started = $session !== null && ($session->position > 1 || ! empty($session->state['history'] ?? []));
+        if ($started && $session->isCompleted() && PersonalRules::started($training)) {
+            return 5; // Module 5 personal rules already sent: reopen at the conclusions (revision or thanks)
+        }
 
         return $started && ! $session->isCompleted() ? 4 : 0;
     }
@@ -165,6 +170,12 @@ class TrainingController extends Controller
         if ($user_training->isInteractive() && ! $this->tutorCompleted($user_training)) {
             return redirect()->route('training.show')
                 ->with('error', 'Please complete the Module 4 exercises with the tutor before finishing the training.');
+        }
+        // Interactive condition, Module 5: the revised personal rules must be saved (rules_v2). The "Proceed" gate
+        // in training_show is client-side (Alpine `rulesDone`), so it is enforced here too.
+        if ($user_training->isInteractive() && ! PersonalRules::completed($user_training)) {
+            return redirect()->route('training.show')
+                ->with('error', 'Please write and save your personal rules in the Conclusion before finishing the training.');
         }
 
         // Save time spent in DB or perform necessary actions

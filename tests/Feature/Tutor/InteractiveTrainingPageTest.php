@@ -4,6 +4,7 @@ namespace Tests\Feature\Tutor;
 
 use App\Http\Controllers\TrainingController;
 use App\Models\Training;
+use App\Models\TrainingResponse;
 use App\Models\TutorSession;
 use App\Services\Tutor\FakeLlmClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -57,7 +58,8 @@ class InteractiveTrainingPageTest extends TestCase
 
         // "Next" gated on Module 4 until tutor-completed (event or data attribute after a reload).
         $this->assertStringContainsString('x-on:tutor-completed.window="tutorDone = true"', $html);
-        $this->assertStringContainsString(':disabled="step === 4 && !tutorDone"', $html);
+        // Same button also gated on Module 5 (personal rules, PersonalRulesTest).
+        $this->assertStringContainsString(':disabled="(step === 4 && !tutorDone) || (step === 5 && !rulesDone)"', $html);
         $this->assertStringContainsString('if (this.step === 4 && !this.tutorDone)', $html);
         $this->assertStringContainsString('document.querySelector(\'[data-tutor-completed="true"]\')', $html);
     }
@@ -122,6 +124,10 @@ class InteractiveTrainingPageTest extends TestCase
         // Completed: back to the normal start.
         $session->update(['completed_at' => now()]);
         $this->assertSame(0, $initialStep());
+
+        // Module 5 personal rules already sent (revision pending or done): reopen at the conclusions.
+        TrainingResponse::record($user->id, $user->training->id, 5, 'rules_v1', 'r', ['rules' => ['r']]);
+        $this->assertSame(5, $initialStep());
     }
 
     public function test_paper_conditions_always_start_at_step_0(): void
@@ -185,12 +191,24 @@ class InteractiveTrainingPageTest extends TestCase
             ->assertSee('Please complete the Module 4 exercises');
     }
 
-    public function test_interactive_training_completes_after_the_tutor(): void
+    public function test_interactive_training_completes_after_the_tutor_and_the_personal_rules(): void
     {
         $user = $this->atTrainingPhase('interactive');
         TutorSession::where('user_id', $user->id)->update(['completed_at' => now()]);
 
+        // Module 4 done, Module 5 not: refused. Rules sent but not revised (rules_v1 only): still refused.
         $this->actingAs($user)->get(route('training.complete', ['time' => 42]))
+            ->assertRedirect(route('training.show'))
+            ->assertSessionHas('error', 'Please write and save your personal rules in the Conclusion before finishing the training.');
+        TrainingResponse::record($user->id, $user->training->id, 5, 'rules_v1', 'r', ['rules' => ['r']]);
+        $this->get(route('training.complete', ['time' => 42]))->assertRedirect(route('training.show'));
+        $this->assertNull($user->fresh()->training_completed);
+        // rules_v2 of ANOTHER training of the same user (e.g. a reset) does not count.
+        TrainingResponse::record($user->id, null, 5, 'rules_v2', 'r', ['rules' => ['r']]);
+        $this->get(route('training.complete', ['time' => 42]))->assertRedirect(route('training.show'));
+
+        TrainingResponse::record($user->id, $user->training->id, 5, 'rules_v2', 'r', ['rules' => ['r']]);
+        $this->get(route('training.complete', ['time' => 42]))
             ->assertRedirect(route('emails', ['folder' => 'inbox']));
         $this->assertNotNull($user->fresh()->training_completed);
         $training = $user->fresh()->training;

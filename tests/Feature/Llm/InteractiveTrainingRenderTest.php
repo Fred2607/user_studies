@@ -39,7 +39,9 @@ class InteractiveTrainingRenderTest extends TestCase
         $this->assertStringNotContainsString(FirstName::PLACEHOLDER, $html);
         $this->assertStringNotContainsString('<b>Al&ice</b>', $html);
         $this->assertStringContainsString('Hello &lt;b&gt;Al&amp;ice&lt;/b&gt;, welcome.', $html);
-        $this->assertStringContainsString('Thank you, &lt;b&gt;Al&amp;ice&lt;/b&gt;.', $html);
+        // The thanks part of the conclusions is shown only at the end of Module 5 (escaping: PersonalRulesTest).
+        $this->assertStringNotContainsString('Thank you,', $html);
+        $this->assertStringContainsString('Recap.', $html);
         // Existing entities are still decoded as for the paper's conditions.
         $this->assertStringContainsString('Strategies & tips.', $html);
     }

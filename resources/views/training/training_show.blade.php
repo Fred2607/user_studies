@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="slot">
-        <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
+        <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true" x-on:rules-completed.window="rulesDone = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
             <div class="{{ $training->isInteractive() ? 'p-4 md:p-12 m-2 md:m-10 min-w-0 max-w-full' : 'p-12 m-10' }} bg-white md:min-w-100 rounded-2xl shadow-xl z-20">
                 <h1 class="text-3xl font-bold text-center mb-5">Anti-phishing Training</h1>
                 @if (session('error'))
@@ -61,7 +61,7 @@
                 <div x-show="step === 5" id="section-conclusions">
                     <div class="text-2xl font-bold text-center mb-6"> -- Conclusion -- </div>
                     <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
-                        {!! $training->renderSection('conclusions') !!}
+                        {!! $training->isInteractive() ? view('training.partials.m5-interactive', ['training' => $training])->render() : $training->renderSection('conclusions') !!}
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 5 of 5</h2>
                 </div>
@@ -90,7 +90,7 @@
                         </div>
                         <div x-show="step >= 0" class="hidden md:block md:flex-1"></div>
                         <div :class="step === 0 ? 'flex-1 w-full' : 'flex-1 md:flex-none'">
-                            <button type="button" id="next" :disabled="step === 4 && !tutorDone" :title="step === 4 && !tutorDone ? 'Complete the exercises with the tutor first' : ''" :style="step === 4 && !tutorDone ? 'opacity: 0.5; cursor: not-allowed' : ''" @click="next()"
+                            <button type="button" id="next" :disabled="(step === 4 && !tutorDone) || (step === 5 && !rulesDone)" :title="step === 4 && !tutorDone ? 'Complete the exercises with the tutor first' : (step === 5 && !rulesDone ? 'Write and save your personal rules first' : '')" :style="(step === 4 && !tutorDone) || (step === 5 && !rulesDone) ? 'opacity: 0.5; cursor: not-allowed' : ''" @click="next()"
                                     :class="{'w-full' : step === 0, 'w-full md:w-64' : step > 0}"
                                     class="py-3 px-3 text-lg text-white bg-blue-500 hover:bg-blue-800 rounded-2xl">Next
                             </button>
@@ -148,8 +148,12 @@
                 // Interactive condition: Module 4 (step 4) is passed only once the tutor chat is completed
                 // (browser event tutor-completed, or data-tutor-completed="true" after a reload).
                 tutorDone: false,
+                // Module 5 (step 5): "Proceed" only once the revised personal rules are saved (browser event
+                // rules-completed, or data-rules-completed="true" after a reload).
+                rulesDone: false,
                 init() {
                     this.tutorDone = document.querySelector('[data-tutor-completed="true"]') !== null;
+                    this.rulesDone = document.querySelector('[data-rules-completed="true"]') !== null;
                     if (this.step > 0) {
                         this.setTimer(); // resumed step: its minimum reading time starts now
                     }
@@ -177,6 +181,9 @@
 @if ($training->isInteractive())
                     if (this.step === 4 && !this.tutorDone) {
                         return; // Module 4 not completed yet: Next stays disabled
+                    }
+                    if (this.step === 5 && !this.rulesDone) {
+                        return; // Module 5 personal rules not saved yet: Proceed stays disabled
                     }
 @endif
                     if (this.step >= this.canProceed) {
