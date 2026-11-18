@@ -101,7 +101,7 @@ class InteractiveTrainingPageTest extends TestCase
         }
     }
 
-    public function test_reload_reopens_module_4_only_when_the_tutor_chat_is_started_and_unfinished(): void
+    public function test_reload_reopens_module_4_while_the_tutor_chat_is_unfinished_then_module_5(): void
     {
         [$user, $html] = $this->render('interactive', ['defense_guidelines' => self::GUIDELINES]);
         // First view: the chat mounts and creates the session, but nothing was written yet.
@@ -123,11 +123,11 @@ class InteractiveTrainingPageTest extends TestCase
         $this->assertStringContainsString('if (this.step > 0) {', $html);
         $this->assertStringContainsString('Exercise 2 of', $html);
 
-        // Completed: back to the normal start.
+        // Completed: Module 5 (the next gated module), personal rules still to write.
         $session->update(['completed_at' => now()]);
-        $this->assertSame(0, $initialStep());
+        $this->assertSame(5, $initialStep());
 
-        // Module 5 personal rules already sent (revision pending or done): reopen at the conclusions.
+        // Module 5 personal rules already sent (revision pending or done): still the conclusions.
         TrainingResponse::record($user->id, $user->training->id, 5, 'rules_v1', 'r', ['rules' => ['r']]);
         $this->assertSame(5, $initialStep());
         // Reopened at the last module, the button label is the one next() sets when reaching it.

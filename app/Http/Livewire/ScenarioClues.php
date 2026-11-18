@@ -110,6 +110,24 @@ class ScenarioClues extends Component
         return $section['options'] === [] || $this->response($training, self::ITEM_DECISION) !== null;
     }
 
+    /**
+     * Module 2 completed by the training's user, from the stored state only (used to resume after a reload): the
+     * decision saved, or every clue opened when the decision point has no radio buttons. False without a valid email.
+     */
+    public static function completedFor(Training $training): bool
+    {
+        $data = $training->interactiveBlock(InteractiveBlocks::SCENARIO_EMAIL);
+        if ($data === null) {
+            return false;
+        }
+        $training = $training->fresh() ?? $training;  // the page may pass the training with its sections already styled
+        $component = new self();
+        $component->trainingCache = $training;
+        $progress = $component->response($training, self::ITEM_CLUES)?->response_json;
+
+        return $progress !== null && $component->completed($training, new ScenarioEmail($data, (string) $training->user->name), $progress, $component->section($training));
+    }
+
     public function mount(): void
     {
         $training = $this->training();

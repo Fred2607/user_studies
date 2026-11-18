@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Livewire\ScenarioClues;
+use App\Http\Livewire\ScenarioQuestion;
 use App\Jobs\ProcessTraining;
 use App\Models\Training;
+use App\Models\TrainingResponse;
 use App\Models\TutorSession;
 use App\Models\User;
 use App\Services\Tutor\PersonalRules;
@@ -59,11 +62,15 @@ class TrainingController extends Controller
 
 
     /**
-     * Step the training page opens at. Interactive condition only: a reload during Module 4 (tutor chat started
-     * and not finished) reopens the page at Module 4 (step 4) instead of the description. The tutor session row is
-     * created (with an empty dialog state) when the chat mounts, on every page view, so "started" means at least one
-     * turn in the dialog history or an email already closed (position > 1). Once Module 4 is completed and the Module 5
-     * personal rules were sent (rules_v1), it reopens at the conclusions (step 5). Paper conditions always start at step 0.
+     * Step the training page opens at. Paper conditions always start at step 0. Interactive condition: a reload
+     * reopens the first gated module not completed yet, as far as the stored state proves the user got:
+     * - Module 1 answer saved -> Module 2 (step 2); Module 2 completed (decision saved) -> Module 3 (step 3), the
+     *   ungated module the user necessarily reached, not beyond;
+     * - Module 4 tutor chat started and not finished -> Module 4 (step 4). The tutor session row is created (with an
+     *   empty dialog state) when the chat mounts, on every page view, so "started" means at least one turn in the
+     *   dialog history or an email already closed (position > 1);
+     * - Module 4 completed -> the conclusions (step 5: personal rules to write, revise, or thanks).
+     * Otherwise the description (step 0).
      */
     private function initialStep(Training $training): int
     {
@@ -75,11 +82,19 @@ class TrainingController extends Controller
             ->where('training_id', $training->id)
             ->first();
         $started = $session !== null && ($session->position > 1 || ! empty($session->state['history'] ?? []));
-        if ($started && $session->isCompleted() && PersonalRules::started($training)) {
-            return 5; // Module 5 personal rules already sent: reopen at the conclusions (revision or thanks)
+        if ($started) {
+            return $session->isCompleted() ? 5 : 4;
         }
+        if (ScenarioClues::completedFor($training)) {
+            return 3;
+        }
+        $m1Answered = TrainingResponse::query()
+            ->where('user_id', $training->user_id)
+            ->where('module', ScenarioQuestion::MODULE)
+            ->where('item_key', ScenarioQuestion::ITEM)
+            ->exists();
 
-        return $started && ! $session->isCompleted() ? 4 : 0;
+        return $m1Answered ? 2 : 0;
     }
 
 

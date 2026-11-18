@@ -317,6 +317,62 @@ class InteractiveModulesTest extends TestCase
         $this->assertSame(0, TrainingResponse::count());
     }
 
+    // ---------------------------------------------------------------- Reload resume
+
+    private function initialStep(): int
+    {
+        return app(TrainingController::class)->showTraining()->getData()['initial_step'];
+    }
+
+    public function test_reload_resumes_at_the_first_gated_module_not_completed(): void
+    {
+        $this->actingAs($user = $this->participant());
+        $this->assertSame(0, $this->initialStep());
+        $this->assertStringContainsString('step: 0,', $this->page($user));
+
+        // Module 1 answered: Module 2, with its reading timer restarted.
+        Livewire::test(ScenarioQuestion::class)->set('answer', 'The sender domain')->call('save');
+        $this->assertSame(2, $this->initialStep());
+        $this->assertStringContainsString('step: 2,', $this->page($user));
+
+        // Clues opened but no decision yet: still Module 2.
+        Livewire::test(ScenarioClues::class)->call('openNext')->call('openNext');
+        $this->assertSame(2, $this->initialStep());
+
+        // Decision saved: Module 3 (ungated, necessarily reached), not Module 4.
+        Livewire::test(ScenarioClues::class)->call('saveDecision', 0);
+        $this->assertSame(3, $this->initialStep());
+        $this->assertStringContainsString('step: 3,', $this->page($user));
+    }
+
+    public function test_reload_resume_without_radios_or_without_a_gated_module_2(): void
+    {
+        // No radio buttons: Module 2 is completed once every clue is opened.
+        $this->actingAs($this->participant(null, '<div><p>Scenario.</p><div data-role="decision-point"><p>Think about it.</p></div></div>'));
+        Livewire::test(ScenarioQuestion::class)->set('answer', 'x')->call('save');
+        Livewire::test(ScenarioClues::class)->call('openNext');
+        $this->assertSame(2, $this->initialStep());
+        Livewire::test(ScenarioClues::class)->call('openNext');
+        $this->assertSame(3, $this->initialStep());
+
+        // Invalid scenario email (Module 2 not gated): nothing proves the user went past it.
+        $email = InteractiveFixtures::email();
+        unset($email['clues']);
+        $this->actingAs($this->participant(self::data(['scenario_email' => $email])));
+        Livewire::test(ScenarioQuestion::class)->set('answer', 'x')->call('save');
+        $this->assertSame(2, $this->initialStep());
+    }
+
+    public function test_reload_resume_ignores_other_users_progress(): void
+    {
+        $other = $this->participant();
+        TrainingResponse::record($other->id, $other->training->id, 1, 'suspicion', 'x', []);
+        TrainingResponse::record($other->id, $other->training->id, 2, 'decision', 'Click the link', ['index' => 0]);
+        $this->actingAs($this->participant());
+
+        $this->assertSame(0, $this->initialStep());
+    }
+
     // ---------------------------------------------------------------- Module 3
 
     public function test_m3_draws_the_diagram_with_escaped_guidelines_and_a_text_alternative(): void
