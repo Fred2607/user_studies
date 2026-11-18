@@ -179,4 +179,18 @@ class ValidatorTest extends TutorTestCase
         $this->assertSame([], $this->rules($zone, ['helpLevel' => HelpLevel::Low, 'userTexts' => ["The sender's address looks odd to me."]]));
         $this->assertSame([], $this->rules('What are you basing that on?', ['helpLevel' => HelpLevel::Low]));
     }
+
+    /** Real-API run 18-11: the tutor echoed a sender domain the user had just typed and both attempts were rejected. */
+    public function test_g6_naming_the_zone_the_user_already_described_by_its_content_is_not_a_hint(): void
+    {
+        $low = ['helpLevel' => HelpLevel::Low];
+        $echo = "You compared the sender's address with your company's and spotted that it ends in brightwave-billing.com. What else would you check?";
+        // The user typed the sender domain without the words "sender's address".
+        $this->assertNotContains('G6:zone_hint', $this->rules($echo, $low + ['userTexts' => ['Now that I look again the domain is brightwave-billing.com, not our company domain.']]));
+        $this->assertNotContains('G6:zone_hint', $this->rules('You read the part after the @. What else?', $low + ['userTexts' => ['It comes from laura.keller@brightwave-billing.com']]));
+        // Still a hint when the user talked about something else.
+        $this->assertContains('G6:zone_hint', $this->rules("Look at the sender's address. What do you notice?", $low + ['userTexts' => ['The noon deadline is weird.']]));
+        // A link host is not evidence for the sender zone of another email, nor for the link zone itself.
+        $this->assertContains('G6:zone_hint', $this->rules('Hover over the button: what do you see?', $low + ['userTexts' => ['The domain is brightwave-billing.com.']]));
+    }
 }

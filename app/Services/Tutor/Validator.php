@@ -117,6 +117,23 @@ final class Validator
         return is_string($host) && $host !== '' ? strtolower($host) : null;
     }
 
+    /**
+     * Header content that, typed by the user, shows they already looked at a zone (G6). Link and hover zones
+     * take no content evidence: a link host can equal the sender domain, and naming the domain is not hovering.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function zoneEvidence(array $card): array
+    {
+        $address = fn (?string $a) => $a === null || $a === '' ? [] : [$a, self::domainOf($a)];
+
+        return [
+            'sender' => $address($card['sender_address'] ?? null),
+            'reply_to' => $address($card['reply_to'] ?? null),
+            'attachment' => array_values(array_filter(array_map(fn (array $a) => $a['filename'] ?? '', $card['attachments'] ?? []))),
+        ];
+    }
+
     /** Domain part of an e-mail address (`a@b.com` -> `b.com`), or the text itself. */
     private static function domainOf(string $text): string
     {
@@ -233,9 +250,13 @@ final class Validator
         $zoneAllowed = $ctx->helpLevel === HelpLevel::High || ($ctx->helpLevel === HelpLevel::Medium && $dontKnow);
         if (! $zoneAllowed) {
             $level = $ctx->helpLevel->value;
+            $evidence = self::zoneEvidence($card);
             foreach (self::ZONE_FAMILIES as $family => $re) {
                 $m = self::firstMatch($re, $msg);
-                $userMentioned = array_filter($ctx->userTexts, fn (string $u) => JsRegex::test($re, $u)) !== [];
+                // The user named the zone either with zone words or by typing its content (e.g. the sender domain):
+                // in both cases the tutor only echoes what the user already looked at.
+                $userMentioned = array_filter($ctx->userTexts, fn (string $u) => JsRegex::test($re, $u)
+                    || array_filter($evidence[$family] ?? [], fn (string $e) => Text::includesCi($u, $e)) !== []) !== [];
                 if ($m !== null && ! $userMentioned) {
                     $v[] = new Violation('G6', 'zone_hint', "zone \"{$family}\" (\"{$m}\") at {$level} help, not mentioned by the user");
                 }
