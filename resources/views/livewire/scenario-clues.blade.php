@@ -1,7 +1,7 @@
 {{--
     Module 2, interactive condition. The generated HTML parts (before / decision point / after) are model output
     printed as for the paper's conditions, inside wire:ignore so Livewire never re-renders them (their scripts and
-    the radio chosen are kept). The email fields come from ScenarioEmail: escaped, with the reachable clues marked.
+    the radio chosen are kept). The part after the decision point is printed only once the answer is saved. The email fields come from ScenarioEmail: escaped, with the reachable clues marked.
 --}}
 @if (! $available)
     <div class="min-w-0 max-w-full">
@@ -71,13 +71,20 @@
                  sent as its index; value and label are read by the server from the generated HTML. --}}
             <div @class(['hidden' => ! $allOpened]) data-m2-decision
                  x-data
+                 x-on:submit.prevent
                  x-on:change="const radios = [...$el.querySelectorAll('input[type=radio]')]; const i = radios.indexOf($event.target); if (i >= 0) { $wire.saveDecision(i) }">
                 <div wire:ignore>{!! $section['decision'] !!}</div>
                 <p role="status" aria-live="polite" class="text-base text-green-700">{{ $decisionSaved ? 'Your answer has been saved.' : '' }}</p>
             </div>
         @endif
-        @if (trim($section['after']) !== '')
-            <div @class(['hidden' => ! $allOpened])>
+        @if ($showAfter)
+            {{-- What follows the decision point (feedback, reflection) reveals the answer: it is printed only once the
+                 answer is saved. Inserted by a Livewire update, its scripts would not run: x-init re-creates them. --}}
+            @if ($runAfterScripts)
+                <div data-m2-after x-data x-init="$el.querySelectorAll('script').forEach((old) => { const s = document.createElement('script'); for (const a of old.attributes) { s.setAttribute(a.name, a.value) } s.textContent = old.textContent; old.replaceWith(s) })">
+            @else
+                <div data-m2-after>
+            @endif
                 <div wire:ignore>{!! $section['after'] !!}</div>
             </div>
         @endif

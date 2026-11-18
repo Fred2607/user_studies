@@ -171,11 +171,14 @@ class InteractiveModulesTest extends TestCase
         $html = $this->page($this->participant(self::data(['scenario_email' => $email])));
         $section = self::between($html, 'id="section-scenario"', 'Section 2 of 5');
 
-        // Scenario text, then the email, then the (hidden) decision point and what follows it.
+        // Scenario text, then the email, then the (hidden) decision point; what follows it (the feedback that
+        // reveals the answer) is not in the page at all until the decision is saved.
         $this->assertLessThan(strpos($section, 'aria-label="Phishing scenario email"'), strpos($section, 'Imagine you are at work, Alice.'));
         $this->assertLessThan(strpos($section, 'data-role="decision-point"'), strpos($section, 'aria-label="Phishing scenario email"'));
         $this->assertStringContainsString('<div class="hidden" data-m2-decision', $section);
-        $this->assertMatchesRegularExpression('/<div class="hidden">\s*<div wire:ignore><div class="mb-10"><div id="m2-feedback"/', $section);
+        $this->assertStringNotContainsString('m2-feedback', $section);
+        $this->assertStringNotContainsString('Feedback area', $section);
+        $this->assertStringNotContainsString('data-m2-after', $section);
         $this->assertStringContainsString('data-m2-completed="false"', $section);
 
         // Email fields; body sanitized, name filled, link not navigating.
@@ -211,6 +214,7 @@ class InteractiveModulesTest extends TestCase
             ->assertSee('The link points outside the company.')
             ->assertSee('You have opened all the suspicious elements.')
             ->assertDontSeeHtml('<div class="hidden" data-m2-decision')
+            ->assertDontSee('Feedback area')  // the feedback after the decision point waits for the answer
             ->assertSeeHtml('data-m2-completed="false"')
             ->assertNotDispatchedBrowserEvent('m2-completed')
             ->call('openNext');  // nothing left: no-op
@@ -222,7 +226,11 @@ class InteractiveModulesTest extends TestCase
         $c->call('saveDecision', 5)->assertStatus(422);
         $this->assertSame(0, TrainingResponse::where('item_key', 'decision')->count());
         $c = Livewire::test(ScenarioClues::class);
-        $c->call('saveDecision', 1)->assertDispatchedBrowserEvent('m2-completed')->assertSee('Your answer has been saved.');
+        $c->assertDontSee('Feedback area');
+        $c->call('saveDecision', 1)->assertDispatchedBrowserEvent('m2-completed')->assertSee('Your answer has been saved.')
+            ->assertSee('Feedback area')
+            // Revealed by this request: its scripts are run by the browser (Livewire inserts it without running them).
+            ->assertSeeHtml('data-m2-after x-data x-init=');
         $c->call('saveDecision', 0);
 
         $decision = TrainingResponse::where('user_id', $user->id)->where('module', 2)->where('item_key', 'decision')->sole();
@@ -230,7 +238,24 @@ class InteractiveModulesTest extends TestCase
         $this->assertSame(['index' => 1, 'value' => 'report'], array_intersect_key($decision->response_json['first'], ['index' => 0, 'value' => 0]));
         $this->assertSame(1, $decision->response_json['changes']);
 
-        $this->assertStringContainsString('data-m2-completed="true"', $this->page($user));
+        // Reload after the answer: the feedback is part of the page (its scripts run as usual, no re-run).
+        $page = $this->page($user);
+        $this->assertStringContainsString('data-m2-completed="true"', $page);
+        $this->assertStringContainsString('Feedback area', $page);
+        $this->assertStringContainsString('<div data-m2-after>', $page);
+    }
+
+    public function test_m2_decision_point_never_submits_its_form(): void
+    {
+        $scenario = '<div><p>Scenario.</p><div data-role="decision-point"><form id="decisionForm"><label><input type="radio" name="d" value="a"> A</label>'
+            . '<button type="submit">Submit</button></form></div><script>document.getElementById("decisionForm").addEventListener("submit", () => {});</script>'
+            . '<p>Option A is the safe path.</p></div>';
+        $section = self::between($this->page($this->participant(null, $scenario)), 'id="section-scenario"', 'Section 2 of 5');
+
+        // The form handler of the generated script arrives with the feedback: until then submit is cancelled here.
+        $this->assertMatchesRegularExpression('/data-m2-decision\s+x-data\s+x-on:submit.prevent/', $section);
+        $this->assertStringNotContainsString('safe path', $section);
+        $this->assertStringNotContainsString('decisionForm").addEventListener', $section);
     }
 
     public function test_m2_unlocated_clue_is_logged_once_and_shown_without_highlight(): void
@@ -255,10 +280,10 @@ class InteractiveModulesTest extends TestCase
 
     public function test_m2_without_radios_completes_when_all_clues_are_opened(): void
     {
-        $this->actingAs($this->participant(null, '<div><p>Scenario.</p><div data-role="decision-point"><p>Think about it.</p></div></div>'));
+        $this->actingAs($this->participant(null, '<div><p>Scenario.</p><div data-role="decision-point"><p>Think about it.</p></div><p>Reflection.</p></div>'));
 
-        Livewire::test(ScenarioClues::class)->call('openNext')->assertNotDispatchedBrowserEvent('m2-completed')
-            ->call('openNext')->assertDispatchedBrowserEvent('m2-completed')->assertSeeHtml('data-m2-completed="true"');
+        Livewire::test(ScenarioClues::class)->call('openNext')->assertNotDispatchedBrowserEvent('m2-completed')->assertDontSee('Reflection.')
+            ->call('openNext')->assertDispatchedBrowserEvent('m2-completed')->assertSeeHtml('data-m2-completed="true"')->assertSee('Reflection.');
     }
 
     public function test_m2_progress_belongs_to_the_authenticated_user_only(): void

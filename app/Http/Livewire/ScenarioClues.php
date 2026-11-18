@@ -21,6 +21,10 @@ use Livewire\Component;
  * browser never sends a clue id or a label: openNext() opens the next clue in the fixed order, saveDecision()
  * receives the index of a radio and the server reads value and label from the generated HTML.
  *
+ * The generated HTML after the decision point (the reflection/feedback, which reveals the right answer) is not sent to
+ * the browser until the decision is saved (or, without radio buttons, until every clue is opened). When it appears
+ * after a Livewire request its scripts are run by the browser (data-m2-after x-init), as they would be on page load.
+ *
  * "Next" of Module 2 is enabled (event `m2-completed`, data-m2-completed="true" after a reload) when the decision is
  * saved, or when all clues are opened if the decision point has no radio buttons. Without a valid scenario email the
  * component prints the section HTML as the paper's conditions do, with no gate.
@@ -30,6 +34,9 @@ class ScenarioClues extends Component
     public const MODULE = 2;
     public const ITEM_CLUES = 'clues';
     public const ITEM_DECISION = 'decision';
+
+    /** Whether the part after the decision point was already in the page when it was loaded (its scripts ran). */
+    public bool $afterShownAtMount = false;
 
     private ?Training $trainingCache = null;
 
@@ -110,7 +117,9 @@ class ScenarioClues extends Component
         if ($email === null) {
             return;
         }
-        if ($this->completed($training, $email, $this->progress($training, $email), $this->section($training))) {
+        $completed = $this->completed($training, $email, $this->progress($training, $email), $this->section($training));
+        $this->afterShownAtMount = $completed;
+        if ($completed) {
             $this->dispatchBrowserEvent('m2-completed');
         }
     }
@@ -188,6 +197,7 @@ class ScenarioClues extends Component
         // Opened clues in the order they were opened (= the fixed order).
         $openedClues = array_values(array_filter($clues, fn ($c) => in_array($c['id'], $opened, true)));
         $decision = $this->response($training, self::ITEM_DECISION);
+        $completed = $current === null && ($section['options'] === [] || $decision !== null);
 
         return view('livewire.scenario-clues', [
             'available' => true,
@@ -198,7 +208,10 @@ class ScenarioClues extends Component
             'total' => count($clues),
             'allOpened' => $current === null,
             'decisionSaved' => $decision !== null,
-            'completed' => $current === null && ($section['options'] === [] || $decision !== null),
+            'completed' => $completed,
+            // The part after the decision point is shown with the module completed (= answer saved).
+            'showAfter' => $completed && trim($section['after']) !== '',
+            'runAfterScripts' => $completed && ! $this->afterShownAtMount,
             'fieldLabels' => ScenarioEmail::FIELD_LABELS,
         ]);
     }
