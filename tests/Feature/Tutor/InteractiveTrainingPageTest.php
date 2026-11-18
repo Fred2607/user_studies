@@ -96,6 +96,8 @@ class InteractiveTrainingPageTest extends TestCase
             $this->assertStringNotContainsString('$("#next")', $html);
             $this->assertSame(2, substr_count($html, 'window.scrollTo(0, 0);'));
             $this->assertStringContainsString('document.getElementById(\'next\').textContent = this.step === num_steps ? "Proceed to last phase" : "Next";', $html);
+            // Label set on init only in the interactive branch (paper pages unchanged).
+            $this->assertSame($personalization === 'interactive' ? 1 : 0, substr_count($html, 'resumed at the last module'));
         }
     }
 
@@ -128,6 +130,10 @@ class InteractiveTrainingPageTest extends TestCase
         // Module 5 personal rules already sent (revision pending or done): reopen at the conclusions.
         TrainingResponse::record($user->id, $user->training->id, 5, 'rules_v1', 'r', ['rules' => ['r']]);
         $this->assertSame(5, $initialStep());
+        // Reopened at the last module, the button label is the one next() sets when reaching it.
+        $html = $show();
+        $this->assertStringContainsString('step: 5,', $html);
+        $this->assertStringContainsString("if (this.step === num_steps) {\n                        // resumed at the last module: same label next() sets when reaching it\n                        document.getElementById('next').textContent = \"Proceed to last phase\";", $html);
     }
 
     public function test_paper_conditions_always_start_at_step_0(): void

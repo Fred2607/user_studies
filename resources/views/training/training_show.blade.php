@@ -176,6 +176,10 @@
                     if (this.step > 0) {
                         this.setTimer(); // resumed step: its minimum reading time starts now
                     }
+                    if (this.step === num_steps) {
+                        // resumed at the last module: same label next() sets when reaching it
+                        document.getElementById('next').textContent = "Proceed to last phase";
+                    }
                 },
                 locked() {
                     return (this.step === 1 && !this.m1Done) || (this.step === 2 && !this.m2Done) || (this.step === 4 && !this.tutorDone) || (this.step === 5 && !this.rulesDone);
