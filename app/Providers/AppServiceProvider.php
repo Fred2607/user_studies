@@ -25,7 +25,7 @@ class AppServiceProvider extends ServiceProvider
             if (config('services.llm.training_provider') === 'anthropic') {
                 return new AnthropicClient(
                     apiKey: (string) config('services.anthropic.key'),
-                    model: (string) config('services.anthropic.model', 'claude-opus-5-5'),
+                    model: (string) config('services.anthropic.model', 'claude-sonnet-5-5'),
                     effort: (string) config('services.anthropic.effort', 'medium'),
                     timeout: $timeout,
                     maxTokens: (int) config('services.anthropic.max_tokens', 16000),

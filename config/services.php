@@ -51,7 +51,7 @@ return [
 
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY'),
-        'model' => env('ANTHROPIC_MODEL', 'claude-opus-5-5'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
         'effort' => env('ANTHROPIC_EFFORT', 'medium'),
         'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS', 16000),
         'max_retries' => (int) env('ANTHROPIC_MAX_RETRIES', 2),
