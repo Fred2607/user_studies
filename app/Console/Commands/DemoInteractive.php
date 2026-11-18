@@ -7,6 +7,7 @@ use App\Jobs\ProcessTraining;
 use App\Models\Training;
 use App\Models\User;
 use App\Models\UserQuestionnaireScale;
+use App\Services\Llm\LlmClient;
 use App\Services\Tutor\FakeLlmClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +25,8 @@ class DemoInteractive extends Command
 {
     protected $signature = 'demo:interactive {--email=demo@example.test : identifies the demo participant (reset if it exists)}
                             {--name=Alice : first name shown in the training}
-                            {--url=http://localhost:8000 : base URL printed for the login link}';
+                            {--url=http://localhost:8000 : base URL printed for the login link}
+                            {--real : generate with the configured LlmClient (TRAINING_LLM_PROVIDER): real provider, billed}';
 
     protected $description = 'LOCAL ONLY: create/reset a demo participant of the interactive condition with a ready training';
 
@@ -87,13 +89,27 @@ class DemoInteractive extends Command
             return $user;
         });
 
-        // Real generation job with scripted answers: same parsing, interactive_data and Module 4 sequence draw.
+        // Real generation job: scripted answers by default (same parsing, interactive_data and Module 4 sequence draw),
+        // or the configured provider with --real (cost test before the study).
+        $real = (bool) $this->option('real');
         $training = Training::create(['user_id' => $user->id, 'generated' => false]);
-        (new ProcessTraining($training->id, $user->fresh()))->handle(new FakeLlmClient(DemoTrainingAnswers::answers()));
+        $llm = $real ? $this->laravel->make(LlmClient::class) : new FakeLlmClient(DemoTrainingAnswers::answers());
+        (new ProcessTraining($training->id, $user->fresh()))->handle($llm);
         $training->refresh();
+        if (! $training->generated) {
+            $this->error('Generation failed: ' . ($training->generation_error ?? 'unknown error'));
+
+            return self::FAILURE;
+        }
 
         $url = rtrim((string) $this->option('url'), '/') . '/training?PROLIFIC_PID=' . $prolificId;
-        $this->info('Demo participant ready (interactive condition, training generated offline).');
+        $this->info($real
+            ? 'Demo participant ready (interactive condition, training generated with the configured provider).'
+            : 'Demo participant ready (interactive condition, training generated offline).');
+        if ($real) {
+            $this->line('  models:       ' . $training->llm_model);
+            $this->line('  usage:        ' . json_encode($training->llm_usage));
+        }
         $this->line("  user id:      {$user->id}");
         $this->line("  email:        {$email}");
         $this->line('  password:     ' . self::PASSWORD . '  (not used by the study flow)');

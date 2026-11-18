@@ -55,6 +55,20 @@ class DemoInteractiveCommandTest extends TestCase
         $this->assertCount(4, $training->interactive_data['scenario_email']['clues']);
     }
 
+    public function test_real_option_generates_with_the_container_llm_client(): void
+    {
+        $this->app['env'] = 'local';
+        $fake = new \App\Services\Tutor\FakeLlmClient(\App\Console\Demo\DemoTrainingAnswers::answers());
+        $this->app->instance(\App\Services\Llm\LlmClient::class, $fake);
+
+        $this->artisan('demo:interactive', ['--real' => true])
+            ->expectsOutputToContain('generated with the configured provider')
+            ->assertExitCode(0);
+
+        $this->assertSame(0, $fake->remaining()); // every generation call went through the bound client
+        $this->assertTrue(User::where('email', 'demo@example.test')->sole()->training->generated);
+    }
+
     public function test_login_url_reaches_the_training_page_with_the_tutor_chat(): void
     {
         $this->app['env'] = 'local';
