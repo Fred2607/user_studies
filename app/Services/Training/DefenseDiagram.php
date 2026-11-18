@@ -8,7 +8,8 @@ use App\Models\Training;
  * Module 3 diagram (interactive condition, generation-prompts-diff.md "Specifica dello schema M3"): a fixed SVG
  * template (640 wide, about 420 tall) with a thumbnail of the scenario email on the left and the defense guidelines on
  * the right; each guideline has a numbered circle on the zone of the email it refers to (`email_part`) and a line
- * to its text. `none` (or a part missing in the email, e.g. no attachment) goes to a "General" box.
+ * to its text. `none` (or a part missing in the email, e.g. no attachment) goes to a "General" box. Guidelines are
+ * numbered in the order of their zones from top to bottom, so the connectors never cross.
  * No icons, no animations. This class only computes geometry and plain strings; the Blade view escapes them.
  *
  * The numbered list of the guidelines is always produced as the text alternative (and the only output when the
@@ -55,6 +56,11 @@ final class DefenseDiagram
         return self::build($guidelines, $email === null ? null : new ScenarioEmail($email, $name));
     }
 
+    /**
+     * With the email, the guidelines are numbered top to bottom by the y of their zone (ties: array order; "General"
+     * last), so the connectors to the stacked texts never cross; the list uses the same numbering. Without the email
+     * they keep the array order.
+     */
     public static function build(array $guidelines, ?ScenarioEmail $view): array
     {
         $items = [];
@@ -66,8 +72,12 @@ final class DefenseDiagram
                 'part_label' => self::PART_LABELS[$guideline['email_part']] ?? 'General',
             ];
         }
+        if ($view === null) {
+            return ['items' => $items, 'svg' => null];
+        }
+        $svg = self::svg($items, $view);
 
-        return ['items' => $items, 'svg' => $view === null ? null : self::svg($items, $view)];
+        return ['items' => $svg['ordered'], 'svg' => array_diff_key($svg, ['ordered' => true])];
     }
 
     private static function svg(array $items, ScenarioEmail $view): array
@@ -137,27 +147,52 @@ final class DefenseDiagram
             }
         }
 
-        // Guideline texts on the right, stacked; numbered circles on the zones, several per zone go leftwards.
+        // Numbering: top to bottom by zone y (stable sort keeps the array order on ties), "General" last.
+        foreach ($items as $i => $item) {
+            $items[$i]['zone'] = isset($zones[$item['part']]) ? $item['part'] : '_general';
+            $items[$i]['index'] = $i;
+        }
+        usort($items, fn ($a, $b) => [$a['zone'] === '_general', $zones[$a['zone']], $a['index']]
+            <=> [$b['zone'] === '_general', $zones[$b['zone']], $b['index']]);
+        foreach ($items as $i => $item) {
+            $items[$i]['number'] = $i + 1;
+        }
+
+        // Guideline texts on the right, stacked in that order, each with a badge.
         $placed = [];
-        $perZone = [];
         $itemY = 26;
         foreach ($items as $item) {
-            $zone = isset($zones[$item['part']]) ? $item['part'] : '_general';
-            $k = $perZone[$zone] = ($perZone[$zone] ?? -1) + 1;
             $wrapped = self::wrap($item['text']);
-            $markerX = $zone === '_general' ? self::CARD_X + 80 + 24 * $k : self::CARD_X + self::CARD_W - 14 - 24 * $k;
             $placed[] = [
                 'number' => $item['number'],
-                'marker' => ['x' => $markerX, 'y' => $zones[$zone]],
+                'zone' => $item['zone'],
                 'badge' => ['x' => self::ITEM_X + 10, 'y' => $itemY],
                 'lines' => array_map(fn ($text, $i) => ['x' => self::TEXT_X, 'y' => $itemY + 4 + $i * self::LINE_H, 'text' => $text], $wrapped, array_keys($wrapped)),
             ];
             $itemY += max(1, count($wrapped)) * self::LINE_H + 22;
         }
 
+        // Numbered circles on the zones, at the right edge of the card (of the General box), several per zone side by
+        // side leftwards. In a zone the badge farthest from it (above or below) gets the leftmost circle: two
+        // connectors leaving the same row then never cross.
+        $byZone = [];
+        foreach ($placed as $k => $item) {
+            $byZone[$item['zone']][] = $k;
+        }
+        foreach ($byZone as $zone => $keys) {
+            $y = $zones[$zone];
+            usort($keys, fn ($a, $b) => [abs($placed[$b]['badge']['y'] - $y), $a] <=> [abs($placed[$a]['badge']['y'] - $y), $b]);
+            $n = count($keys);
+            foreach ($keys as $slot => $k) {
+                $placed[$k]['marker'] = ['x' => self::CARD_X + self::CARD_W - 14 - 24 * ($n - 1 - $slot), 'y' => $y];
+            }
+        }
+        $placed = array_map(fn ($p) => ['number' => $p['number'], 'marker' => $p['marker'], 'badge' => $p['badge'], 'lines' => $p['lines']], $placed);
+        $ordered = array_map(fn ($i) => array_intersect_key($i, ['number' => 0, 'text' => 0, 'part' => 0, 'part_label' => 0]), $items);
+
         $height = (int) max(self::MIN_HEIGHT, $itemY, ($general['y'] ?? 0) + ($general['height'] ?? 0) + 10, $card['height'] + 20);
 
-        return ['width' => self::WIDTH, 'height' => $height, 'card' => $card, 'rows' => $rows, 'general' => $general, 'items' => $placed];
+        return ['width' => self::WIDTH, 'height' => $height, 'card' => $card, 'rows' => $rows, 'general' => $general, 'items' => $placed, 'ordered' => $ordered];
     }
 
     /** Paragraph-level lines of the body text (block boundaries become line breaks). */
