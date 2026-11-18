@@ -5,6 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Services\Training\FirstName;
+use App\Services\Training\InteractiveBlockException;
+use App\Services\Training\InteractiveBlocks;
+use Illuminate\Support\Facades\Log;
 
 class Training extends Model
 {
@@ -59,6 +62,32 @@ class Training extends Model
             $html = FirstName::fillHtml($html, (string) $this->user->name);
         }
         return $html;
+    }
+
+    /**
+     * Validated structured block of an interactive training (data-role "scenario-header", "scenario-email",
+     * "defense-guidelines"), or null when the training is not interactive or the stored block is missing or
+     * invalid: the modules then fall back to the plain section HTML. Validated again at render time because
+     * interactive_data may come from an older generation or a manual edit.
+     */
+    public function interactiveBlock(string $role): ?array
+    {
+        if (! $this->isInteractive()) {
+            return null;
+        }
+        $data = ($this->interactive_data ?? [])[str_replace('-', '_', $role)] ?? null;
+        if ($data === null) {
+            return null;
+        }
+        try {
+            return InteractiveBlocks::validate($role, $data);
+        } catch (InteractiveBlockException $e) {
+            Log::warning('Invalid interactive block, module shown without it', [
+                'training_id' => $this->id, 'role' => $role, 'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /*

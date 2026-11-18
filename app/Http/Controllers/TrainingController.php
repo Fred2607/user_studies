@@ -192,7 +192,8 @@ class TrainingController extends Controller
     }
 
 
-    private function addCSS($tranining) {
+    // Public static: the interactive Module 2 component (ScenarioClues) styles the scenario HTML the same way.
+    public static function addCSS($tranining) {
         foreach (["introduction", "scenario", "defense_strategies", "conclusions"] as $section) {
             $html = $tranining->$section;
             $dom = new DOMDocument();
