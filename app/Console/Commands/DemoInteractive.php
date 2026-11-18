@@ -101,7 +101,7 @@ class DemoInteractive extends Command
         $this->line('  M4 sequence:  ' . implode(', ', $training->interactive_data['m4']['sequence'] ?? []));
         $this->line("  login URL:    {$url}");
         $this->line('Open the URL in a private window (an existing session of another participant is replaced).');
-        $this->line('Module 4 tutor answers are offline only if the server runs with APP_ENV=local TUTOR_FAKE=true.');
+        $this->line('Module 4 tutor answers and the Module 5 comment on the personal rules are offline only if the server runs with APP_ENV=local TUTOR_FAKE=true.');
 
         return self::SUCCESS;
     }
@@ -112,10 +112,10 @@ class DemoInteractive extends Command
         return 'DEMO' . substr(sha1(strtolower($email)), 0, 12);
     }
 
-    /** Removes the training and the Module 4 data of a previous demo run of this participant. */
+    /** Removes the training and the Module 4/5 data of a previous demo run of this participant. */
     private function resetProgress(User $user): void
     {
-        foreach (['tutor_turns', 'training_responses', 'tutor_sessions', 'trainings'] as $table) {
+        foreach (['tutor_turns', 'training_responses', 'rules_comments', 'tutor_sessions', 'trainings'] as $table) {
             DB::table($table)->where('user_id', $user->id)->delete();
         }
     }

@@ -3,9 +3,14 @@
 namespace Tests\Feature\Demo;
 
 use App\Console\Commands\DemoInteractive;
+use App\Models\RulesComment;
 use App\Models\Training;
 use App\Models\TutorSession;
 use App\Models\User;
+use App\Services\Tutor\DemoLlmClient;
+use App\Services\Tutor\PersonalRules;
+use App\Services\Tutor\Phase;
+use App\Services\Tutor\TutorConversation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -79,5 +84,43 @@ class DemoInteractiveCommandTest extends TestCase
         $this->assertSame(1, Training::where('user_id', $user->id)->count());
         $this->assertNotSame($first, $user->training->id);
         $this->assertSame(0, TutorSession::where('user_id', $user->id)->count());
+    }
+
+    public function test_offline_demo_reaches_module_5_and_completes_the_training(): void
+    {
+        $this->app['env'] = 'local';
+        $this->artisan('demo:interactive')->assertExitCode(0);
+        $user = User::where('email', 'demo@example.test')->sole();
+        $this->app->instance('tutor.llm', new DemoLlmClient());  // what TUTOR_FAKE=true binds in local
+        $this->actingAs($user);
+
+        // Module 4 with the offline tutor: answer every email until the sequence is completed.
+        $chat = new TutorConversation($user);
+        for ($i = 0; $i < 40 && ! $chat->session(fresh: true)->isCompleted(); $i++) {
+            $chat->resetRateLimit();
+            if ($chat->dialog()->phase === Phase::Closed) {
+                $chat->advance();
+                continue;
+            }
+            $this->assertTrue($chat->submit('phishing', 'The sender address domain looks wrong and the link button is odd')->ok());
+        }
+        $this->assertTrue($chat->session(fresh: true)->isCompleted());
+
+        // Module 5: the generated recap is on the page, the thanks only after the revision.
+        $this->get('/training?PROLIFIC_PID=' . $user->prolific_id)->assertOk()
+            ->assertSee('data-rules-completed="false"', false)
+            ->assertDontSee('data-role="thanks"', false);
+        $rules = new PersonalRules($user->fresh());
+        $this->assertTrue($rules->submitRules(['When an email asks for my password, I open the app myself.', 'When I am in a hurry, I read the sender address again.'])->ok());
+        $comment = RulesComment::where('user_id', $user->id)->sole();
+        $this->assertSame(RulesComment::SHOWN, $comment->status, json_encode($comment->validator_errors));
+        $this->assertSame(DemoLlmClient::MODEL, $comment->model);
+        $this->assertTrue($rules->submitRevision(['When an email asks for my password, I open the app myself.', 'When I am in a hurry, I read the sender address again.'])->ok());
+        $this->get('/training?PROLIFIC_PID=' . $user->prolific_id)->assertOk()
+            ->assertSee('data-rules-completed="true"', false)
+            ->assertSee('Thank you for attending this training, Alice!');
+
+        $this->get(route('training.complete', ['time' => 600]))->assertRedirect(route('emails', ['folder' => 'inbox']));
+        $this->assertNotNull($user->fresh()->training_completed);
     }
 }

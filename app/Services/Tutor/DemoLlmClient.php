@@ -14,6 +14,9 @@ use App\Services\Llm\LlmResponse;
  * plausible reply that passes the Validator: clue ids recognised by keyword matching on what the user wrote,
  * generic Socratic messages (max 3 sentences, one question, no verdict, no zone hints, no card internals).
  * It shows the whole UI flow; it is not a model and its pedagogy is canned.
+ *
+ * It also answers the Module 5 comment on the personal rules (prompt 5b, PersonalRules): a missed cue counts as
+ * covered when the rules mention it (same keyword matching), the question goes to the last uncovered one.
  */
 class DemoLlmClient implements LlmClient
 {
@@ -43,6 +46,9 @@ class DemoLlmClient implements LlmClient
     {
         if ($this->delayMs > 0) {
             usleep($this->delayMs * 1000);  // lets the "tutor is writing" state show in the UI
+        }
+        if (str_contains($system, "# 6. USER'S RULES")) {
+            return $this->rulesComment($system);
         }
         $card = $this->cardFromPrompt($system);
         $closing = preg_match('/Current turn type:\s*closing\b/', $system) === 1;
@@ -80,6 +86,42 @@ class DemoLlmClient implements LlmClient
             'minimal_reply' => ! $closing && $minimal,
             'unsupported_claims' => [],
             'off_topic' => false,
+        ];
+
+        return new LlmResponse(json_encode($reply, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), self::MODEL, 'end_turn', ['input_tokens' => 0, 'output_tokens' => 0]);
+    }
+
+    /** Module 5 (prompt 5b): valid comment JSON built from blocks 3 (missed cues) and 6 (the user's rules). */
+    private function rulesComment(string $system): LlmResponse
+    {
+        $missed = [];
+        if (preg_match('/# 3\. CUES MISSED IN THE EXERCISES[^\n]*\n(.*?)\n\n# 4\./s', $system, $m) === 1) {
+            $decoded = json_decode($m[1], true);
+            foreach (is_array($decoded) ? $decoded : [] as $exercise) {
+                foreach ($exercise['missed_main_clues'] ?? [] as $clue) {
+                    $missed[] = ['id' => (string) $clue['id'], 'label' => (string) ($clue['label'] ?? ''), 'target' => (array) ($clue['position'] ?? [])];
+                }
+            }
+        }
+        $rules = [];
+        if (preg_match('/# 6\. USER\'S RULES\n(.*?)\n\n# 7\./s', $system, $m) === 1) {
+            $decoded = json_decode($m[1], true);
+            $rules = is_array($decoded) ? array_values(array_filter($decoded, 'is_string')) : [];
+        }
+        $covered = array_values(array_map(fn (array $c) => $c['id'], array_filter($missed, fn (array $c) => $this->mentioned($c, $rules))));
+        $uncovered = array_values(array_filter($missed, fn (array $c) => ! in_array($c['id'], $covered, true)));
+        $focus = $uncovered === [] ? null : end($uncovered);
+
+        $message = match (true) {
+            $missed === [] => 'Your rules are concrete and you did not miss any of the key details in the exercises. Keep them in mind every time an email asks you to act.',
+            $focus === null => 'Your rules already cover the details that slipped past you in the exercises. Keep them in mind every time an email asks you to act.',
+            default => 'Thanks, your rules say clearly what you will do. In one exercise a detail slipped past you: "'.rtrim($focus['label'], '.').'". Which situation in your rules would make you check it next time?',
+        };
+        $reply = [
+            'message' => $message,
+            'covered_clue_ids' => $covered,
+            'focus_clue_id' => $focus['id'] ?? null,
+            'generic_rule' => false,
         ];
 
         return new LlmResponse(json_encode($reply, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), self::MODEL, 'end_turn', ['input_tokens' => 0, 'output_tokens' => 0]);
