@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="slot">
-        <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
+        <div x-data="load()"@if ($training->isInteractive()) x-on:tutor-completed.window="tutorDone = true" x-on:m1-completed.window="m1Done = true" x-on:m2-completed.window="m2Done = true"@endif class="min-h-screen bg-gray-200 flex justify-center items-center">
             <div class="{{ $training->isInteractive() ? 'p-4 md:p-12 m-2 md:m-10 min-w-0 max-w-full' : 'p-12 m-10' }} bg-white md:min-w-100 rounded-2xl shadow-xl z-20">
                 <h1 class="text-3xl font-bold text-center mb-5">Anti-phishing Training</h1>
                 @if (session('error'))
@@ -25,6 +25,10 @@
                     <div class="text-2xl font-bold text-center mb-6"> -- Introduction -- </div>
                     <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
                         {!! $training->renderSection('introduction') !!}
+@if ($training->isInteractive())
+                        {{-- Module 1, interactive condition: scenario header + question (gates Next until answered). --}}
+                        <livewire:scenario-question />
+@endif
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 1 of 5</h2>
                 </div>
@@ -32,7 +36,12 @@
                 <div x-show="step === 2" id="section-scenario">
                     <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
                     <div class="text-2xl font-bold text-center mb-6"> -- Phishing Scenario -- </div>
+@if ($training->isInteractive())
+                        {{-- Module 2, interactive condition: annotated email, clues one at a time, then the decision point. --}}
+                        <livewire:scenario-clues />
+@else
                         {!! $training->renderSection('scenario') !!}
+@endif
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 2 of 5</h2>
                 </div>
@@ -42,6 +51,10 @@
                     <div class="text-2xl font-bold text-center mb-6"> -- Defense Strategies -- </div>
                     <div class="text-xl {{ $training->isInteractive() ? 'text-left md:text-justify' : 'text-justify' }}">
                         {!! $training->renderSection('defense_strategies') !!}
+@if ($training->isInteractive())
+                        {{-- Module 3, interactive condition: diagram of the scenario email with the guidelines. --}}
+                        @include('training.partials.m3-diagram', ['diagram' => \App\Services\Training\DefenseDiagram::forTraining($training)])
+@endif
                     </div>
                     <h2 class="text-l w-full text-center mt-10">Section 3 of 5</h2>
                 </div>
@@ -90,7 +103,7 @@
                         </div>
                         <div x-show="step >= 0" class="hidden md:block md:flex-1"></div>
                         <div :class="step === 0 ? 'flex-1 w-full' : 'flex-1 md:flex-none'">
-                            <button type="button" id="next" :disabled="step === 4 && !tutorDone" :title="step === 4 && !tutorDone ? 'Complete the exercises with the tutor first' : ''" :style="step === 4 && !tutorDone ? 'opacity: 0.5; cursor: not-allowed' : ''" @click="next()"
+                            <button type="button" id="next" :disabled="locked()" :title="lockMessage()" :style="locked() ? 'opacity: 0.5; cursor: not-allowed' : ''" @click="next()"
                                     :class="{'w-full' : step === 0, 'w-full md:w-64' : step > 0}"
                                     class="py-3 px-3 text-lg text-white bg-blue-500 hover:bg-blue-800 rounded-2xl">Next
                             </button>
@@ -148,11 +161,26 @@
                 // Interactive condition: Module 4 (step 4) is passed only once the tutor chat is completed
                 // (browser event tutor-completed, or data-tutor-completed="true" after a reload).
                 tutorDone: false,
+                // Modules 1 and 2 are passed once their activity is saved (events m1-completed / m2-completed, or
+                // data-m1/m2-completed="true" after a reload); without the activity (no valid data) they are not gated.
+                m1Done: true,
+                m2Done: true,
                 init() {
                     this.tutorDone = document.querySelector('[data-tutor-completed="true"]') !== null;
+                    this.m1Done = document.querySelector('[data-m1-completed="false"]') === null;
+                    this.m2Done = document.querySelector('[data-m2-completed="false"]') === null;
                     if (this.step > 0) {
                         this.setTimer(); // resumed step: its minimum reading time starts now
                     }
+                },
+                locked() {
+                    return (this.step === 1 && !this.m1Done) || (this.step === 2 && !this.m2Done) || (this.step === 4 && !this.tutorDone);
+                },
+                lockMessage() {
+                    if (this.step === 1 && !this.m1Done) return 'Answer the question first';
+                    if (this.step === 2 && !this.m2Done) return 'Open all the suspicious elements and answer the question first';
+                    if (this.step === 4 && !this.tutorDone) return 'Complete the exercises with the tutor first';
+                    return '';
                 },
 @else
                 step: 0,
@@ -175,8 +203,8 @@
                 next() {
                     console.log(this.step, this.canProceed)
 @if ($training->isInteractive())
-                    if (this.step === 4 && !this.tutorDone) {
-                        return; // Module 4 not completed yet: Next stays disabled
+                    if (this.locked()) {
+                        return; // Module 1, 2 or 4 not completed yet: Next stays disabled
                     }
 @endif
                     if (this.step >= this.canProceed) {

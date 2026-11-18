@@ -57,8 +57,9 @@ class InteractiveTrainingPageTest extends TestCase
 
         // "Next" gated on Module 4 until tutor-completed (event or data attribute after a reload).
         $this->assertStringContainsString('x-on:tutor-completed.window="tutorDone = true"', $html);
-        $this->assertStringContainsString(':disabled="step === 4 && !tutorDone"', $html);
-        $this->assertStringContainsString('if (this.step === 4 && !this.tutorDone)', $html);
+        $this->assertStringContainsString(':disabled="locked()"', $html);
+        $this->assertStringContainsString('if (this.locked()) {', $html);
+        $this->assertStringContainsString('|| (this.step === 4 && !this.tutorDone);', $html);
         $this->assertStringContainsString('document.querySelector(\'[data-tutor-completed="true"]\')', $html);
     }
 
