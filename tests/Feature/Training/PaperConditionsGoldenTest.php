@@ -11,7 +11,8 @@ use Tests\TestCase;
 /**
  * The training page of the paper's conditions must stay byte-identical to the one rendered before the
  * interactive modules were added. The golden files in tests/fixtures/pages/ were captured on 6fbb5d7
- * (feat/interactive-training, before lot C2); only the per-request CSRF token is normalised.
+ * (feat/interactive-training, before lot C2); only the per-request CSRF token and the Vite asset hashes
+ * (which change on every `npm run build`) are normalised.
  * Regenerate (only after an intentional change to the paper path) with UPDATE_GOLDEN=1.
  */
 class PaperConditionsGoldenTest extends TestCase
@@ -44,7 +45,17 @@ class PaperConditionsGoldenTest extends TestCase
                 file_put_contents($file, $html);
             }
             $this->assertFileExists($file);
-            $this->assertSame(file_get_contents($file), $html, "Paper condition '$personalization' page changed");
+            $this->assertSame(
+                self::normaliseAssets(file_get_contents($file)),
+                self::normaliseAssets($html),
+                "Paper condition '$personalization' page changed"
+            );
         }
+    }
+
+    /** Replaces the content hash in Vite build file names, e.g. build/assets/app.6b08a940.css -> build/assets/app.HASH.css. */
+    private static function normaliseAssets(string $html): string
+    {
+        return preg_replace('#build/assets/([\w-]+)\.[0-9a-f]{8}\.(css|js)#', 'build/assets/$1.HASH.$2', $html);
     }
 }
