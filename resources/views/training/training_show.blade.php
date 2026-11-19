@@ -142,6 +142,46 @@
         </div>
 
         <script>
+@if ($training->isInteractive())
+        // Interactive condition. The events that unlock "Next" (Modules 1, 2, 4, 5) are dispatched by Livewire only
+        // after it has updated the DOM: if that update throws (e.g. a generated script of Module 2), the event would be
+        // lost although the server has saved the activity. The same events are therefore re-dispatched as soon as the
+        // response arrives, before the DOM update (the listeners only set a flag, a second dispatch is harmless).
+        if (window.Livewire) {
+            const unlockEvents = ['m1-completed', 'm2-completed', 'tutor-completed', 'rules-completed'];
+            window.Livewire.hook('message.received', (message) => {
+                const dispatches = (message && message.response && message.response.effects && message.response.effects.dispatches) || [];
+                dispatches.forEach((d) => {
+                    if (unlockEvents.includes(d.event)) {
+                        window.dispatchEvent(new CustomEvent(d.event, { detail: d.data || {} }));
+                    }
+                });
+            });
+        }
+
+        // Module 2: shows the part after the decision point, received in a <template> (scenario-clues). Each generated
+        // script is re-created as a new <script> element in its place before the insertion, so the browser runs it
+        // natively with document.currentScript set, as on page load; an error in one script is reported by the
+        // browser and stops neither the other scripts nor the page.
+        function m2RevealAfter(el) {
+            const template = el.querySelector('template[data-m2-after-html]');
+            if (!template) return;
+            const content = document.importNode(template.content, true);
+            content.querySelectorAll('script').forEach((old) => {
+                try {
+                    const script = document.createElement('script');
+                    for (const a of old.attributes) script.setAttribute(a.name, a.value);
+                    script.textContent = old.textContent;
+                    old.replaceWith(script);
+                } catch (e) {
+                    console.error(e);
+                    old.remove();
+                }
+            });
+            template.replaceWith(content);
+        }
+
+@endif
         function load() {
             let num_steps = 5;
             let startTime = Date.now(); // Capture start time

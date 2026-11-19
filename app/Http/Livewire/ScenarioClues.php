@@ -23,7 +23,8 @@ use Livewire\Component;
  *
  * The generated HTML after the decision point (the reflection/feedback, which reveals the right answer) is not sent to
  * the browser until the decision is saved (or, without radio buttons, until every clue is opened). When it appears
- * after a Livewire request its scripts are run by the browser (data-m2-after x-init), as they would be on page load.
+ * after a Livewire request it is sent inside a <template> (Livewire 2 would eval() plain scripts during the DOM update,
+ * with document.currentScript null) and inserted by data-m2-after x-init, which runs its scripts as on page load.
  *
  * "Next" of Module 2 is enabled (event `m2-completed`, data-m2-completed="true" after a reload) when the decision is
  * saved, or when all clues are opened if the decision point has no radio buttons. Without a valid scenario email the

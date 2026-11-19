@@ -263,6 +263,44 @@ class InteractiveModulesTest extends TestCase
         $this->assertStringNotContainsString('decisionForm").addEventListener', $section);
     }
 
+    /**
+     * Regression (real run, 19-11): the generated part after the decision point had a script using
+     * document.currentScript.parentElement. Sent as a plain <script> in the Livewire update, Livewire 2 eval()s it
+     * during the DOM update (currentScript null -> TypeError), which aborted the update before the m2-completed event:
+     * answer saved, "Next" never enabled. The part now travels inside a <template>, which Livewire does not walk.
+     */
+    public function test_m2_after_part_scripts_are_not_sent_as_live_script_elements_in_the_livewire_update(): void
+    {
+        $script = '<script>(function () { var root = document.currentScript.parentElement; root.dataset.ran = "1"; })();</script>';
+        $scenario = '<div><p>Picture it, {{first_name}}.</p><div data-role="decision-point"><form>'
+            . '<label><input type="radio" name="decision" value="click"> Click the link</label>'
+            . '<label><input type="radio" name="decision" value="report"> Report it</label></form></div>'
+            . '<p><strong>Key lesson:</strong> pause and verify.</p>' . $script . '</div>';
+        $this->actingAs($user = $this->participant(null, $scenario));
+
+        $c = Livewire::test(ScenarioClues::class)->call('openNext')->call('openNext')
+            ->call('saveDecision', 1)->assertDispatchedBrowserEvent('m2-completed')->assertSee('Your answer has been saved.');
+        $html = $c->lastRenderedDom;
+        $after = substr($html, strpos($html, 'data-m2-after'));
+
+        $this->assertStringContainsString('<div data-m2-after x-data x-init="m2RevealAfter($el)">', $html);
+        $this->assertMatchesRegularExpression('/<div wire:ignore><template data-m2-after-html>.*Key lesson:.*document\.currentScript\.parentElement.*<\/template><\/div>/s', $after);
+        // Every script of the after part is inside the template (inert for Livewire), none outside it.
+        $outsideTemplate = preg_replace('/<template data-m2-after-html>.*?<\/template>/s', '', $after);
+        $this->assertStringNotContainsString('<script', $outsideTemplate);
+
+        // The training page defines the helper that runs those scripts natively, and re-dispatches the unlock
+        // events from the server response before the DOM update (so "Next" does not depend on generated scripts).
+        $page = $this->page($user);
+        $this->assertStringContainsString('function m2RevealAfter(el)', $page);
+        $this->assertStringContainsString("const script = document.createElement('script');", $page);
+        $this->assertStringContainsString("window.Livewire.hook('message.received'", $page);
+        $this->assertMatchesRegularExpression("/unlockEvents = \\['m1-completed', 'm2-completed', 'tutor-completed', 'rules-completed'\\]/", $page);
+        // After a reload the part is printed directly (scripts run on page load, no template).
+        $this->assertStringContainsString('<div data-m2-after>', $page);
+        $this->assertStringNotContainsString('<template data-m2-after-html>', $page);
+    }
+
     public function test_m2_unlocated_clue_is_logged_once_and_shown_without_highlight(): void
     {
         $email = InteractiveFixtures::email();

@@ -79,14 +79,19 @@
         @endif
         @if ($showAfter)
             {{-- What follows the decision point (feedback, reflection) reveals the answer: it is printed only once the
-                 answer is saved. Inserted by a Livewire update, its scripts would not run: x-init re-creates them. --}}
+                 answer is saved. Inserted by a Livewire update, it travels inside a <template>: Livewire 2 would
+                 otherwise eval() its scripts during the DOM update (document.currentScript null, and an error there
+                 aborts the update before the m2-completed event). x-init (m2RevealAfter, training_show) inserts it
+                 and runs its scripts as new <script> elements, as on page load. --}}
             @if ($runAfterScripts)
-                <div data-m2-after x-data x-init="$el.querySelectorAll('script').forEach((old) => { const s = document.createElement('script'); for (const a of old.attributes) { s.setAttribute(a.name, a.value) } s.textContent = old.textContent; old.replaceWith(s) })">
+                <div data-m2-after x-data x-init="m2RevealAfter($el)">
+                    <div wire:ignore><template data-m2-after-html>{!! $section['after'] !!}</template></div>
+                </div>
             @else
                 <div data-m2-after>
+                    <div wire:ignore>{!! $section['after'] !!}</div>
+                </div>
             @endif
-                <div wire:ignore>{!! $section['after'] !!}</div>
-            </div>
         @endif
     </div>
 @endif
