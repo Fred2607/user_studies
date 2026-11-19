@@ -132,6 +132,44 @@ class ScenarioEmailTest extends TestCase
     {
         $parts = ScenarioSection::split('<div><p>Only text</p></div>');
 
-        $this->assertSame(['before' => '<div><p>Only text</p></div>', 'decision' => null, 'after' => '', 'options' => []], $parts);
+        $this->assertSame(['before' => '<div><p>Only text</p></div>', 'decision' => null, 'after' => '', 'options' => [], 'feedback' => []], $parts);
+    }
+
+    public function test_feedback_of_each_option_is_extracted_from_the_section_and_made_visible(): void
+    {
+        $html = '<div><p>Intro</p><div data-role="decision-point"><form>'
+            . '<label><input type="radio" name="d" value="click"> Click</label>'
+            . '<label><input type="radio" name="d" value="reply"> Reply</label>'
+            . '<label><input type="radio" name="d" value="report"> Report</label>'
+            . '<label><input type="radio" name="d" value="ignore"> Ignore</label></form>'
+            . '<div data-role="feedback" data-feedback-for="click" hidden class="hidden mt-2" style="display: none; color: red"><p><b>Risky.</b></p><script>x()</script></div>'
+            . '<div data-role="feedback" data-feedback-for="other" hidden><p>Unrelated</p></div></div>'
+            . '<div id="feedback-reply" style="display:none">Not safe.</div>'
+            . '<p class="feedback" data-option="report" aria-hidden="true">Well done.</p>'
+            . '<p>Key lesson.</p></div>';
+
+        $parts = ScenarioSection::split($html);
+
+        $this->assertSame([
+            0 => '<div class="mt-2" style="color: red"><p><b>Risky.</b></p></div>',
+            1 => '<div>Not safe.</div>',
+            2 => '<p class="feedback">Well done.</p>',
+        ], $parts['feedback']);
+        // The extracted elements are no longer in the generated parts; unmatched ones are left as they are.
+        $this->assertStringNotContainsString('Risky.', $parts['decision']);
+        $this->assertStringContainsString('data-feedback-for="other"', $parts['decision']);
+        $this->assertSame('<div><p>Key lesson.</p></div>', $parts['after']);
+        $this->assertCount(4, $parts['options']);
+    }
+
+    public function test_feedback_is_not_mapped_when_option_values_are_ambiguous(): void
+    {
+        $html = '<div><div data-role="decision-point"><label><input type="radio" name="d"> A</label>'
+            . '<label><input type="radio" name="d"> B</label></div><div data-feedback-for="on" hidden>Feedback</div></div>';
+
+        $parts = ScenarioSection::split($html);
+
+        $this->assertSame([], $parts['feedback']);
+        $this->assertStringContainsString('data-feedback-for="on"', $parts['after']);
     }
 }

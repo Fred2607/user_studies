@@ -14,6 +14,8 @@
             .m2-email [data-clue-state="opened"] { background: #fef3c7; color: inherit; border-radius: 2px; }
             .m2-email [data-clue-number]::after { content: attr(data-clue-number); display: inline-block; margin-left: 2px; padding: 0 5px; border-radius: 9999px; background: #b45309; color: #fff; font-size: 0.7em; font-weight: 600; line-height: 1.4; vertical-align: super; }
             .m2-email [data-clue-current]:focus-visible { outline: 3px solid #1d4ed8; }
+            /* The feedback carries the section margins added by addCSS (mb-10/mb-4): none after its last block. */
+            [data-m2-option-feedback] > :last-child, [data-m2-option-feedback] > :last-child > :last-child { margin-bottom: 0; }
         </style>
 
         <div wire:ignore>{!! $section['before'] !!}</div>
@@ -75,6 +77,11 @@
                  x-on:change="const radios = [...$el.querySelectorAll('input[type=radio]')]; const i = radios.indexOf($event.target); if (i >= 0) { $wire.saveDecision(i) }">
                 <div wire:ignore>{!! $section['decision'] !!}</div>
                 <p role="status" aria-live="polite" class="text-base text-green-700">{{ $decisionSaved ? 'Your answer has been saved.' : '' }}</p>
+                @if ($feedback !== null)
+                    {{-- Feedback of the saved option (model output, without scripts), printed by the platform: it is
+                         re-rendered when the answer changes, so it stays outside wire:ignore. --}}
+                    <div data-m2-option-feedback class="mt-3 mb-6 rounded-xl border border-blue-200 bg-blue-50 p-3 md:p-4 text-base">{!! $feedback !!}</div>
+                @endif
             </div>
         @endif
         @if ($showAfter)

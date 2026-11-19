@@ -26,6 +26,10 @@ use Livewire\Component;
  * after a Livewire request it is sent inside a <template> (Livewire 2 would eval() plain scripts during the DOM update,
  * with document.currentScript null) and inserted by data-m2-after x-init, which runs its scripts as on page load.
  *
+ * Per-option feedback written by the model is taken out of the generated parts (ScenarioSection `feedback`) and the
+ * component prints the feedback of the saved option itself, after the decision point (also after a reload): the
+ * generated scripts that toggle it look for the radios relative to their own position, which the split changes.
+ *
  * "Next" of Module 2 is enabled (event `m2-completed`, data-m2-completed="true" after a reload) when the decision is
  * saved, or when all clues are opened if the decision point has no radio buttons. Without a valid scenario email the
  * component prints the section HTML as the paper's conditions do, with no gate.
@@ -217,6 +221,7 @@ class ScenarioClues extends Component
         $openedClues = array_values(array_filter($clues, fn ($c) => in_array($c['id'], $opened, true)));
         $decision = $this->response($training, self::ITEM_DECISION);
         $completed = $current === null && ($section['options'] === [] || $decision !== null);
+        $savedIndex = $decision?->response_json['index'] ?? null;
 
         return view('livewire.scenario-clues', [
             'available' => true,
@@ -227,6 +232,8 @@ class ScenarioClues extends Component
             'total' => count($clues),
             'allOpened' => $current === null,
             'decisionSaved' => $decision !== null,
+            // Feedback of the saved option, when the generated HTML has one for it (null otherwise: nothing shown).
+            'feedback' => is_int($savedIndex) ? ($section['feedback'][$savedIndex] ?? null) : null,
             'completed' => $completed,
             // The part after the decision point is shown with the module completed (= answer saved).
             'showAfter' => $completed && trim($section['after']) !== '',

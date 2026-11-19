@@ -301,6 +301,74 @@ class InteractiveModulesTest extends TestCase
         $this->assertStringNotContainsString('<template data-m2-after-html>', $page);
     }
 
+    /** Real Module 2 of the interactive condition (Sonnet run 19-11, user 6): feedback divs inside the decision point. */
+    private const SCENARIO_WITH_FEEDBACK = '<div>'
+        . '<p>Picture it, {{first_name}}: a new message lands in your inbox, apparently about your parcel.</p>'
+        . '<div data-role="decision-point"><p><strong>What would you do with this email?</strong></p><form>'
+        . '<label><input type="radio" name="decision" value="click"> Click the link and pay the small fee, just to be safe.</label><br>'
+        . '<label><input type="radio" name="decision" value="reply"> Reply to the email and ask if it is genuine.</label><br>'
+        . '<label><input type="radio" name="decision" value="ignore"> Ignore it, and check my order directly on the retailer\'s website or app.</label><br>'
+        . '<label><input type="radio" name="decision" value="report"> Report it as phishing and delete it.</label></form>'
+        . '<div data-role="feedback" data-feedback-for="click" hidden><p><strong>Risky choice.</strong> The fee is only €1.99, but the real goal is your card details.</p></div>'
+        . '<div data-role="feedback" data-feedback-for="reply" hidden><p><strong>Not safe.</strong> Your reply would go straight to the scammers.</p></div>'
+        . '<div data-role="feedback" data-feedback-for="ignore" hidden><p><strong>Good choice.</strong> Checking your order through a website or app you already trust avoids every trap.</p></div>'
+        . '<div data-role="feedback" data-feedback-for="report" hidden><p><strong>Excellent choice.</strong> Reporting the message helps protect you and your colleagues.</p></div>'
+        . '</div>'
+        . '<p><strong>Key lesson:</strong> pause and verify it through a channel you already trust.</p>'
+        . '<script>(function () { var root = document.currentScript.parentElement;'
+        . ' var radios = root.querySelectorAll(\'input[name="decision"]\');'
+        . ' radios.forEach(function (r) { r.addEventListener(\'change\', function () {'
+        . ' root.querySelectorAll(\'[data-role="feedback"]\').forEach(function (f) { f.hidden = f.getAttribute(\'data-feedback-for\') !== r.value; }); }); }); })();</script>'
+        . '</div>';
+
+    /**
+     * Regression (real run, 19-11): the per-option feedback of the decision point was shown only by a generated script
+     * that looks for the radios in document.currentScript.parentElement; after the split that parent is the part
+     * after the decision point, so the feedback divs stayed hidden. The platform now shows the feedback of the saved
+     * option itself (server-side, also after a reload) and never sends the feedback of the other options.
+     */
+    public function test_m2_shows_the_feedback_of_the_saved_option_rendered_by_the_platform(): void
+    {
+        $this->actingAs($user = $this->participant(null, self::SCENARIO_WITH_FEEDBACK));
+
+        $c = Livewire::test(ScenarioClues::class)->call('openNext')->call('openNext');
+        // Before the answer no feedback reaches the browser (it would reveal the right answer).
+        foreach (['Risky choice.', 'Not safe.', 'Good choice.', 'Excellent choice.'] as $text) {
+            $c->assertDontSee($text);
+        }
+
+        $c->call('saveDecision', 0)->assertSee('Risky choice.')->assertSee('€1.99', false)
+            ->assertDontSee('Not safe.')->assertDontSee('Good choice.')->assertDontSee('Excellent choice.');
+        $html = $c->lastRenderedDom;
+        $feedback = self::between($html, '<div data-m2-option-feedback', 'data-m2-after');
+        $this->assertStringContainsString('Risky choice.', $feedback);
+        // Visible, and not reachable by the generated scripts (no hidden, data-role, data-feedback-for).
+        $this->assertStringNotContainsString('hidden', $feedback);
+        $this->assertStringNotContainsString('data-role="feedback"', $feedback);
+        $this->assertStringNotContainsString('data-feedback-for', $feedback);
+        // The generated feedback divs are removed from the decision point (no double display by a working script).
+        $this->assertStringNotContainsString('data-feedback-for="', $html);
+
+        // A changed answer shows the feedback of the new option only.
+        $c->call('saveDecision', 2)->assertSee('Good choice.')->assertDontSee('Risky choice.');
+
+        // Reload after the answer: the feedback of the saved option is in the page.
+        $page = $this->page($user);
+        $section = self::between($page, 'id="section-scenario"', 'Section 2 of 5');
+        $this->assertStringContainsString('Good choice.', $section);
+        $this->assertStringNotContainsString('Risky choice.', $section);
+        $this->assertStringContainsString('Key lesson:', $section);
+        $this->assertStringNotContainsString('data-feedback-for="', $section);
+    }
+
+    public function test_m2_without_matching_feedback_shows_no_platform_feedback(): void
+    {
+        $this->actingAs($this->participant());
+
+        Livewire::test(ScenarioClues::class)->call('openNext')->call('openNext')->call('saveDecision', 1)
+            ->assertSee('Your answer has been saved.')->assertSee('Feedback area')->assertDontSeeHtml('<div data-m2-option-feedback');
+    }
+
     public function test_m2_unlocated_clue_is_logged_once_and_shown_without_highlight(): void
     {
         $email = InteractiveFixtures::email();
